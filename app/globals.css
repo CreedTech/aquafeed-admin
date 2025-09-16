@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: var(--font-manrope);
+
+  --color-primary: #0ea27e;
+  --color-primary-dark: #0a8066;
+  --color-primary-light: #3dbb9a;
+
+  --color-gray-50: #f7f8f9; /* ClickUp-like background */
+  --color-gray-100: #f1f2f4;
+  --color-gray-200: #e6e8eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-900: #1a1a1a; /* Tight text color */
+}
+
+/* Base Styles */
+body {
+  font-family: var(--font-manrope), sans-serif;
+  letter-spacing: -0.015em; /* Tight tracking for that ClickUp feel */
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
