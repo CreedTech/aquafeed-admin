@@ -173,10 +173,10 @@ export default function CategoriesPage() {
               {categories.map((category) => (
                 <div
                   key={category._id}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 hover:bg-gray-50 gap-4"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                       <Tag size={18} />
                     </div>
                     <div>
@@ -190,7 +190,7 @@ export default function CategoriesPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-3">
                     <span
                       className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                         category.isActive
@@ -206,7 +206,7 @@ export default function CategoriesPage() {
                           setEditingCategory(category);
                           setIsModalOpen(true);
                         }}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
+                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary transition-colors"
                       >
                         <Edit2 size={16} />
                       </button>
@@ -215,7 +215,7 @@ export default function CategoriesPage() {
                           if (confirm('Delete this category?'))
                             deleteMutation.mutate(category._id);
                         }}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
+                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
                       >
                         <Trash2 size={16} />
                       </button>
