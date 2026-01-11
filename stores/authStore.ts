@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
 
 interface User {
     id: string;
@@ -24,7 +23,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     login: async (email: string, otp: string) => {
         try {
-            const { data } = await api.post('/auth/verify-otp', { email, otp });
+            // Use local proxy route instead of direct backend call
+            const response = await fetch('/api/auth/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, otp }),
+            });
+            const data = await response.json();
+
+            if (!response.ok) throw new Error(data.error);
             if (data.user.role !== 'admin') {
                 throw new Error('Admin access required');
             }
@@ -37,7 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     logout: async () => {
         try {
-            await api.post('/auth/logout');
+            await fetch('/api/auth/logout', { method: 'POST' });
         } finally {
             set({ user: null, isAuthenticated: false });
         }
@@ -45,8 +52,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     checkAuth: async () => {
         try {
-            const { data } = await api.get('/auth/me');
-            if (data.user.role === 'admin') {
+            const response = await fetch('/api/auth/me');
+            const data = await response.json();
+
+            if (response.ok && data.user?.role === 'admin') {
                 set({ user: data.user, isAuthenticated: true, isLoading: false });
             } else {
                 set({ user: null, isAuthenticated: false, isLoading: false });
@@ -56,3 +65,4 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
     },
 }));
+

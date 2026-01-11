@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/services/api';
 import { Loader2, Mail, KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -47,11 +46,17 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
     try {
-      await api.post('/auth/request-otp', { email });
+      const response = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to send OTP');
       setStep('otp');
     } catch (err: unknown) {
-      const error = err as ApiError;
-      setError(error.response?.data?.error || 'Failed to send OTP');
+      const error = err as Error;
+      setError(error.message || 'Failed to send OTP');
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +67,13 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await api.post('/auth/verify-otp', { email, otp });
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Invalid OTP');
       if (data.user.role !== 'admin') {
         setError('Access denied. Admin account required.');
         setIsLoading(false);
@@ -71,8 +82,8 @@ export default function LoginPage() {
       await checkAuth();
       router.replace('/');
     } catch (err: unknown) {
-      const error = err as ApiError;
-      setError(error.response?.data?.error || 'Invalid OTP');
+      const error = err as Error;
+      setError(error.message || 'Invalid OTP');
     } finally {
       setIsLoading(false);
     }
