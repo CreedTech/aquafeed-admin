@@ -14,6 +14,7 @@ import {
   Target,
   Tags,
   Fish,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -30,15 +31,23 @@ const sidebarItems = [
   { icon: Settings, label: 'Settings', href: '/settings' },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
     <aside
       className={cn(
-        'h-screen bg-[#1E1F21] text-gray-400 flex flex-col transition-all duration-300 border-r border-gray-800',
-        isCollapsed ? 'w-[60px]' : 'w-[240px]'
+        'fixed inset-y-0 left-0 z-50 md:relative h-screen bg-[#1E1F21] text-gray-400 flex flex-col transition-all duration-300 border-r border-gray-800',
+        isCollapsed ? 'md:w-[60px]' : 'md:w-[240px]',
+        isOpen
+          ? 'w-[240px] translate-x-0'
+          : 'w-[240px] -translate-x-full md:translate-x-0'
       )}
     >
       {/* Header */}
@@ -46,18 +55,29 @@ export function Sidebar() {
         <div
           className={cn(
             'flex items-center gap-2 overflow-hidden',
-            isCollapsed && 'justify-center'
+            isCollapsed && 'md:justify-center'
           )}
         >
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-lg">A</span>
           </div>
-          {!isCollapsed && (
-            <span className="font-bold text-gray-100 truncate">
-              AquaFeed Admin
-            </span>
-          )}
+          <span
+            className={cn(
+              'font-bold text-gray-100 truncate',
+              isCollapsed && 'md:hidden'
+            )}
+          >
+            AquaFeed Admin
+          </span>
         </div>
+
+        {/* Mobile Close Button */}
+        <button
+          onClick={onClose}
+          className="ml-auto p-1 md:hidden text-gray-400 hover:text-gray-100"
+        >
+          <X size={24} />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -73,18 +93,20 @@ export function Sidebar() {
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'hover:bg-gray-800 text-gray-400 hover:text-gray-100',
-                isCollapsed && 'justify-center px-2'
+                isCollapsed && 'md:justify-center md:px-2'
               )}
             >
               <item.icon size={20} />
-              {!isCollapsed && <span>{item.label}</span>}
+              <span className={cn(isCollapsed && 'md:hidden')}>
+                {item.label}
+              </span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer / Collapse Toggle */}
-      <div className="p-2 border-t border-gray-800 shrink-0">
+      {/* Footer / Collapse Toggle - only visible on desktop */}
+      <div className="hidden md:block p-2 border-t border-gray-800 shrink-0">
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={cn(
