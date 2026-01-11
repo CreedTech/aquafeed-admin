@@ -137,12 +137,13 @@ export default function UsersPage() {
               Manage users, roles, and access permissions
             </p>
           </div>
-          <div className="text-sm text-gray-500">
-            Total:{' '}
-            <span className="font-semibold text-gray-900">
+          <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full w-fit">
+            <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+              Total:
+            </span>
+            <span className="text-sm font-bold text-gray-900">
               {data?.meta?.total || 0}
-            </span>{' '}
-            users
+            </span>
           </div>
         </div>
 
@@ -173,10 +174,10 @@ export default function UsersPage() {
           </select>
         </div>
 
-        {/* Table Container */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Desktop Table View */}
+        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[1000px] lg:min-w-0">
+            <table className="w-full text-sm text-left min-w-[800px] lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
                   <th className="px-6 py-4">User</th>
@@ -284,6 +285,109 @@ export default function UsersPage() {
           </div>
         </div>
 
+        {/* Mobile Card View */}
+        <div className="sm:hidden space-y-4">
+          {data?.data?.map((user: User) => (
+            <div
+              key={user._id}
+              onClick={() => setViewingUser(user)}
+              className={`bg-white p-4 rounded-xl border transition-all active:scale-[0.98] ${
+                viewingUser?._id === user._id
+                  ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                  : 'border-gray-200'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                    {user.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 truncate">
+                      {user.name}
+                    </p>
+                    <p className="text-gray-500 text-xs truncate">
+                      {user.email}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    user.role === 'admin'
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {user.role}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 py-3 border-t border-b border-gray-50">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-semibold">
+                    Wallet
+                  </p>
+                  <p className="text-sm font-mono font-bold text-gray-700">
+                    ₦{user.walletBalance?.toLocaleString() || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-semibold">
+                    Formulas
+                  </p>
+                  <p className="text-sm font-bold text-gray-700">
+                    {user.formulaCount || 0}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      user.isActive ? 'bg-primary' : 'bg-gray-300'
+                    }`}
+                  />
+                  <span className="text-xs font-medium text-gray-600">
+                    {user.isActive ? 'Active' : 'Blocked'}
+                  </span>
+                </div>
+                <div
+                  className="flex items-center gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setEditingUser(user)}
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    onClick={() =>
+                      toggleBlockMutation.mutate({
+                        id: user._id,
+                        isActive: !user.isActive,
+                      })
+                    }
+                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+                  >
+                    {user.isActive ? (
+                      <Ban size={16} />
+                    ) : (
+                      <CheckCircle size={16} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {data?.data?.length === 0 && (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+              <p className="text-gray-500 text-sm">No users found</p>
+            </div>
+          )}
+        </div>
+
         {/* Pagination */}
         {data?.meta && (
           <div className="flex items-center justify-between text-sm text-gray-500">
@@ -325,20 +429,28 @@ export default function UsersPage() {
 
       {/* User Details Side Panel */}
       {viewingUser && (
-        <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300">
-          {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
-            <h2 className="text-lg font-bold text-gray-900">User Details</h2>
-            <button
-              onClick={() => setViewingUser(null)}
-              className="p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <X size={20} />
-            </button>
-          </div>
+        <>
+          {/* Backdrop for mobile */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40 sm:hidden animate-in fade-in"
+            onClick={() => setViewingUser(null)}
+          />
+          <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
+              <h2 className="text-lg font-bold text-gray-900">User Details</h2>
+              <button
+                onClick={() => setViewingUser(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Close details"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-          <UserDetailDrawerContent user={viewingUser} />
-        </div>
+            <UserDetailDrawerContent user={viewingUser} />
+          </div>
+        </>
       )}
     </div>
   );
@@ -408,10 +520,10 @@ function UserDetailDrawerContent({ user }: { user: User }) {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-2 gap-3">
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500">Wallet Balance</p>
-            <p className="text-xl font-bold text-gray-900">
+            <p className="text-xl font-bold text-gray-900 truncate">
               ₦{user.walletBalance?.toLocaleString()}
             </p>
           </div>
@@ -429,7 +541,7 @@ function UserDetailDrawerContent({ user }: { user: User }) {
           </div>
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500">Joined</p>
-            <p className="text-lg font-bold text-gray-900">
+            <p className="text-lg font-bold text-gray-900 truncate">
               {new Date(user.createdAt).toLocaleDateString()}
             </p>
           </div>
@@ -494,22 +606,28 @@ function UserDetailDrawerContent({ user }: { user: User }) {
                   {expandedFormulation === f._id && (
                     <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-4">
                       {/* Summary */}
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-xs text-gray-500">Cost/kg</p>
-                          <p className="font-mono font-medium">
+                      <div className="grid grid-cols-2 xs:grid-cols-3 gap-2 text-center">
+                        <div className="p-2.5 bg-white rounded-lg border border-gray-100 shadow-sm">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+                            Cost/kg
+                          </p>
+                          <p className="text-sm font-mono font-bold text-gray-900">
                             ₦{f.costPerKg?.toFixed(2)}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Quality</p>
-                          <p className="font-medium">
+                        <div className="p-2.5 bg-white rounded-lg border border-gray-100 shadow-sm">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+                            Quality
+                          </p>
+                          <p className="text-sm font-bold text-gray-900">
                             {f.qualityMatchPercentage}%
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Status</p>
-                          <p className="font-medium">
+                        <div className="p-2.5 bg-white rounded-lg border border-gray-100 shadow-sm col-span-2 xs:col-span-1">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+                            Status
+                          </p>
+                          <p className="text-sm font-bold text-gray-900">
                             {f.isUnlocked
                               ? 'Unlocked'
                               : f.isDemo
@@ -521,25 +639,24 @@ function UserDetailDrawerContent({ user }: { user: User }) {
 
                       {/* Actual Nutrients */}
                       {f.actualNutrients && (
-                        <div>
-                          <p className="text-xs font-medium text-gray-600 mb-2">
-                            Nutrient Composition
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-gray-700">
+                            Nutrient Composition (%)
                           </p>
-                          <div className="grid grid-cols-4 gap-2 text-xs">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {Object.entries(f.actualNutrients).map(
                               ([key, value]) => (
                                 <div
                                   key={key}
-                                  className="bg-white p-2 rounded text-center"
+                                  className="bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm flex flex-col items-center justify-center transition-colors hover:border-primary/20"
                                 >
-                                  <p className="text-gray-400 capitalize">
+                                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tight truncate w-full text-center mb-1">
                                     {key}
                                   </p>
-                                  <p className="font-mono font-medium">
+                                  <p className="text-xs font-mono font-bold text-gray-900">
                                     {typeof value === 'number'
-                                      ? value.toFixed(2)
+                                      ? value.toFixed(1)
                                       : value}
-                                    %
                                   </p>
                                 </div>
                               )
@@ -554,18 +671,20 @@ function UserDetailDrawerContent({ user }: { user: User }) {
                           <p className="text-xs font-medium text-gray-600 mb-2">
                             Ingredients ({f.ingredientsUsed.length})
                           </p>
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             {f.ingredientsUsed.map((ing, idx) => (
                               <div
                                 key={idx}
-                                className="flex items-center justify-between text-xs bg-white p-2 rounded"
+                                className="flex flex-col xs:flex-row xs:items-center justify-between text-xs bg-white p-2.5 rounded border border-gray-100 gap-1"
                               >
-                                <span className="text-gray-700">
+                                <span className="text-gray-900 font-medium">
                                   {ing.name || ing.ingredientId?.name}
                                 </span>
-                                <div className="flex gap-3 text-gray-500">
-                                  <span>{ing.qtyKg?.toFixed(2)} kg</span>
-                                  <span className="font-mono">
+                                <div className="flex items-center justify-between xs:justify-end gap-4 text-gray-500 border-t xs:border-t-0 pt-1 xs:pt-0 mt-1 xs:mt-0">
+                                  <span className="bg-gray-50 px-1.5 py-0.5 rounded">
+                                    {ing.qtyKg?.toFixed(2)} kg
+                                  </span>
+                                  <span className="font-mono text-primary font-medium">
                                     ₦{ing.priceAtMoment?.toLocaleString()}/kg
                                   </span>
                                 </div>
@@ -649,8 +768,8 @@ function UserEditModal({
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[95vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">Edit User</h2>
           <button
@@ -665,7 +784,7 @@ function UserEditModal({
             e.preventDefault();
             onSubmit(form);
           }}
-          className="p-6 space-y-4"
+          className="p-6 space-y-4 overflow-y-auto"
         >
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
