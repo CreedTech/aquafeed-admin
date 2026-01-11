@@ -64,7 +64,7 @@ export default function SettingsPage() {
         <h2 className="text-lg font-semibold text-gray-900">
           System Information
         </h2>
-        <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-gray-500">Version</p>
             <p className="font-medium text-gray-900">1.0.0</p>
@@ -73,9 +73,9 @@ export default function SettingsPage() {
             <p className="text-gray-500">Environment</p>
             <p className="font-medium text-gray-900">Development</p>
           </div>
-          <div>
+          <div className="sm:col-span-2">
             <p className="text-gray-500">API Endpoint</p>
-            <p className="font-mono text-gray-900 text-xs">
+            <p className="font-mono text-gray-900 text-xs break-all">
               localhost:5000/api/v1
             </p>
           </div>
