@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+// Robust backend URL resolution
+const getBackendUrl = () => {
+    // Priority: 1. BACKEND_URL, 2. NEXT_PUBLIC_API_URL, 3. fallback
+    const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+    // Ensure we don't have double /api/v1 if both env vars are used differently
+    return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
+};
 
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
+    const API_URL = getBackendUrl();
     try {
         const { path } = await params;
         const cookieStore = await cookies();
@@ -24,6 +31,8 @@ export async function GET(
             headers['Cookie'] = `connect.sid=${sessionId}`;
         }
 
+        console.log(`[Proxy GET] Forwarding to: ${API_URL}/${apiPath}${queryString}`);
+
         const backendResponse = await fetch(`${API_URL}/${apiPath}${queryString}`, {
             method: 'GET',
             headers,
@@ -32,8 +41,8 @@ export async function GET(
         const data = await backendResponse.json();
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
-        console.error('Proxy error:', error);
-        return NextResponse.json({ error: 'Proxy error' }, { status: 500 });
+        console.error('[Proxy GET Error]:', error);
+        return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
 
@@ -41,6 +50,7 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
+    const API_URL = getBackendUrl();
     try {
         const { path } = await params;
         const cookieStore = await cookies();
@@ -56,6 +66,8 @@ export async function POST(
         if (sessionId) {
             headers['Cookie'] = `connect.sid=${sessionId}`;
         }
+
+        console.log(`[Proxy POST] Forwarding to: ${API_URL}/${apiPath}`);
 
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'POST',
@@ -66,8 +78,8 @@ export async function POST(
         const data = await backendResponse.json();
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
-        console.error('Proxy error:', error);
-        return NextResponse.json({ error: 'Proxy error' }, { status: 500 });
+        console.error('[Proxy POST Error]:', error);
+        return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
 
@@ -75,6 +87,7 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
+    const API_URL = getBackendUrl();
     try {
         const { path } = await params;
         const cookieStore = await cookies();
@@ -91,6 +104,8 @@ export async function PUT(
             headers['Cookie'] = `connect.sid=${sessionId}`;
         }
 
+        console.log(`[Proxy PUT] Forwarding to: ${API_URL}/${apiPath}`);
+
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'PUT',
             headers,
@@ -100,8 +115,8 @@ export async function PUT(
         const data = await backendResponse.json();
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
-        console.error('Proxy error:', error);
-        return NextResponse.json({ error: 'Proxy error' }, { status: 500 });
+        console.error('[Proxy PUT Error]:', error);
+        return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
 
@@ -109,6 +124,7 @@ export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
+    const API_URL = getBackendUrl();
     try {
         const { path } = await params;
         const cookieStore = await cookies();
@@ -124,6 +140,8 @@ export async function DELETE(
             headers['Cookie'] = `connect.sid=${sessionId}`;
         }
 
+        console.log(`[Proxy DELETE] Forwarding to: ${API_URL}/${apiPath}`);
+
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'DELETE',
             headers,
@@ -132,7 +150,8 @@ export async function DELETE(
         const data = await backendResponse.json();
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
-        console.error('Proxy error:', error);
-        return NextResponse.json({ error: 'Proxy error' }, { status: 500 });
+        console.error('[Proxy DELETE Error]:', error);
+        return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
+
