@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
         }
 
-        const backendResponse = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+        const backendResponse = await fetch(`${API_URL}/auth/me`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
