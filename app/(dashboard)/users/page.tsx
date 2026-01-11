@@ -12,7 +12,6 @@ import {
   Edit2,
   X,
   Wallet,
-  Eye,
   FlaskConical,
   CreditCard,
   ChevronDown,
@@ -122,14 +121,14 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="flex">
+    <div className="flex relative">
       {/* Main Content */}
       <div
         className={`flex-1 space-y-6 transition-all ${
-          viewingUser ? 'mr-[480px]' : ''
+          viewingUser ? 'lg:mr-[480px]' : ''
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               User Management
@@ -148,8 +147,8 @@ export default function UsersPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
+          <div className="relative flex-1 w-full">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               size={18}
@@ -157,134 +156,132 @@ export default function UsersPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or email..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
             />
           </div>
           <select
             value={roleFilter}
-            onChange={(e) => {
-              setRoleFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="w-full sm:w-[160px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="">All Roles</option>
-            <option value="farmer">Farmers</option>
-            <option value="admin">Admins</option>
-            <option value="consultant">Consultants</option>
+            <option value="farmer">Farmer</option>
+            <option value="admin">Admin</option>
+            <option value="consultant">Consultant</option>
           </select>
         </div>
 
-        {/* Table */}
+        {/* Table Container */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
-              <tr>
-                <th className="px-6 py-4">User</th>
-                <th className="px-6 py-4">Role</th>
-                <th className="px-6 py-4">Wallet</th>
-                <th className="px-6 py-4">Formulas</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data?.data?.map((user: User) => (
-                <tr
-                  key={user._id}
-                  className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
-                    viewingUser?._id === user._id ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={() => setViewingUser(user)}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                        {user.name?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{user.name}</p>
-                        <p className="text-gray-500 text-xs">{user.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
-                        user.role === 'admin'
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-gray-50 text-gray-600'
-                      }`}
-                    >
-                      {user.role === 'admin' && <Shield size={12} />}
-                      {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5 text-gray-600">
-                      <Wallet size={14} />
-                      <span className="font-mono">
-                        ₦{user.walletBalance?.toLocaleString() || 0}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {user.formulaCount || 0}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          user.isActive ? 'bg-primary' : 'bg-gray-300'
-                        }`}
-                      />
-                      <span className="text-gray-700">
-                        {user.isActive ? 'Active' : 'Blocked'}
-                      </span>
-                    </div>
-                  </td>
-                  <td
-                    className="px-6 py-4 text-right"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => setEditingUser(user)}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          toggleBlockMutation.mutate({
-                            id: user._id,
-                            isActive: !user.isActive,
-                          })
-                        }
-                        disabled={toggleBlockMutation.isPending}
-                        className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${
-                          user.isActive
-                            ? 'text-gray-500 hover:text-red-600'
-                            : 'text-gray-500 hover:text-primary'
-                        }`}
-                      >
-                        {user.isActive ? (
-                          <Ban size={16} />
-                        ) : (
-                          <CheckCircle size={16} />
-                        )}
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left min-w-[1000px] lg:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                <tr>
+                  <th className="px-6 py-4">User</th>
+                  <th className="px-6 py-4">Role</th>
+                  <th className="px-6 py-4">Wallet</th>
+                  <th className="px-6 py-4">Formulas</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data?.data?.map((user: User) => (
+                  <tr
+                    key={user._id}
+                    className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
+                      viewingUser?._id === user._id ? 'bg-primary/5' : ''
+                    }`}
+                    onClick={() => setViewingUser(user)}
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                          {user.name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {user.name}
+                          </p>
+                          <p className="text-gray-500 text-xs">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
+                          user.role === 'admin'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-gray-50 text-gray-600'
+                        }`}
+                      >
+                        {user.role === 'admin' && <Shield size={12} />}
+                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-gray-600">
+                        <Wallet size={14} />
+                        <span className="font-mono">
+                          ₦{user.walletBalance?.toLocaleString() || 0}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {user.formulaCount || 0}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            user.isActive ? 'bg-primary' : 'bg-gray-300'
+                          }`}
+                        />
+                        <span className="text-gray-700">
+                          {user.isActive ? 'Active' : 'Blocked'}
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      className="px-6 py-4 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditingUser(user)}
+                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() =>
+                            toggleBlockMutation.mutate({
+                              id: user._id,
+                              isActive: !user.isActive,
+                            })
+                          }
+                          disabled={toggleBlockMutation.isPending}
+                          className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${
+                            user.isActive
+                              ? 'text-gray-500 hover:text-red-600'
+                              : 'text-gray-500 hover:text-primary'
+                          }`}
+                        >
+                          {user.isActive ? (
+                            <Ban size={16} />
+                          ) : (
+                            <CheckCircle size={16} />
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Pagination */}
@@ -326,24 +323,29 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Right Drawer */}
+      {/* User Details Side Panel */}
       {viewingUser && (
-        <UserDetailDrawer
-          user={viewingUser}
-          onClose={() => setViewingUser(null)}
-        />
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300">
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
+            <h2 className="text-lg font-bold text-gray-900">User Details</h2>
+            <button
+              onClick={() => setViewingUser(null)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <UserDetailDrawerContent user={viewingUser} />
+        </div>
       )}
     </div>
   );
 }
 
-function UserDetailDrawer({
-  user,
-  onClose,
-}: {
-  user: User;
-  onClose: () => void;
-}) {
+// Renamed UserDetailDrawer to UserDetailDrawerContent to be used within the new drawer structure
+function UserDetailDrawerContent({ user }: { user: User }) {
   const [expandedFormulation, setExpandedFormulation] = useState<string | null>(
     null
   );
@@ -369,15 +371,7 @@ function UserDetailDrawer({
   });
 
   return (
-    <div className="fixed right-0 top-0 h-screen w-[480px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto z-40">
-      {/* Header */}
-      <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
-        <h2 className="text-lg font-bold text-gray-900">User Details</h2>
-        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-          <X size={20} />
-        </button>
-      </div>
-
+    <div className="flex-1 overflow-y-auto">
       <div className="p-6 space-y-6">
         {/* User Profile */}
         <div className="flex items-start gap-4">
