@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 // Robust backend URL resolution
@@ -7,7 +7,7 @@ const getBackendUrl = () => {
     return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
 };
 
-export async function POST(request: NextRequest) {
+export async function POST() {
     const API_URL = getBackendUrl();
     try {
         const cookieStore = await cookies();

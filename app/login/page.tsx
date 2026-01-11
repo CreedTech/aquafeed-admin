@@ -5,13 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Mail, KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 
-interface ApiError {
-  response?: {
-    data?: {
-      error?: string;
-    };
-  };
-}
+// LoginPage component
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,7 +26,7 @@ export default function LoginPage() {
       hasChecked.current = true;
       checkAuth();
     }
-  }, []);
+  }, [checkAuth]);
 
   // Redirect if authenticated
   useEffect(() => {
