@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Backend runs on port 5000
-const API_URL = 'http://localhost:5001/api/v1';
+// Use environment variable or fallback to localhost
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
 
 export const api = axios.create({
     baseURL: API_URL,
