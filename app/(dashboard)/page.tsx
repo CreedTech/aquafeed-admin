@@ -158,7 +158,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             Dashboard
@@ -167,14 +167,23 @@ export default function DashboardPage() {
             Welcome back! Here&apos;s your platform overview.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200">
+        <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 w-fit">
           <Calendar size={16} />
-          {new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
+          <span className="hidden sm:inline">
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </span>
+          <span className="sm:hidden">
+            {new Date().toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </span>
         </div>
       </div>
 
@@ -288,7 +297,10 @@ export default function DashboardPage() {
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v) => `₦${v / 1000}k`}
+                    tickFormatter={(v) =>
+                      `₦${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`
+                    }
+                    width={40}
                   />
                   <Tooltip
                     contentStyle={{
@@ -349,14 +361,14 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-          <div className="flex justify-center gap-4 mt-2">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">
             {charts.formulationsByStatus.map((item) => (
               <div
                 key={item.name}
-                className="flex items-center gap-1.5 text-xs"
+                className="flex items-center gap-1.5 text-xs whitespace-nowrap"
               >
                 <div
-                  className="w-2 h-2 rounded-full"
+                  className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
                 <span className="text-gray-600">
