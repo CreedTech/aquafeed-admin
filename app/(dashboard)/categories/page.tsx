@@ -14,6 +14,7 @@ import {
   Activity,
   Database,
 } from 'lucide-react';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Category {
   _id: string;
@@ -48,6 +49,7 @@ export default function CategoriesPage() {
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['categories', typeFilter],
@@ -79,8 +81,10 @@ export default function CategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/categories/${id}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['categories'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      setDeletingId(null);
+    },
   });
 
   // Group by type
@@ -211,10 +215,7 @@ export default function CategoriesPage() {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('Delete this category?'))
-                            deleteMutation.mutate(category._id);
-                        }}
+                        onClick={() => setDeletingId(category._id)}
                         className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
                       >
                         <Trash2 size={16} />
@@ -244,6 +245,17 @@ export default function CategoriesPage() {
           isLoading={createMutation.isPending || updateMutation.isPending}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
+        isLoading={deleteMutation.isPending}
+        title="Delete Category"
+        message="Are you sure you want to delete this category? This action cannot be undone and may affect related items."
+        confirmText="Delete Category"
+      />
     </div>
   );
 }

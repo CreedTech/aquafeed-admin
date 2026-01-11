@@ -12,6 +12,7 @@ import {
   X,
   Database,
 } from 'lucide-react';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Nutrient {
   protein: number;
@@ -51,6 +52,7 @@ export default function IngredientsPage() {
   const [viewingIngredient, setViewingIngredient] = useState<Ingredient | null>(
     null
   );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ingredients', search, categoryFilter],
@@ -84,8 +86,13 @@ export default function IngredientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/ingredients/${id}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      setDeletingId(null);
+      if (viewingIngredient?._id === deletingId) {
+        setViewingIngredient(null);
+      }
+    },
   });
 
   // Group by category for stats
@@ -262,10 +269,7 @@ export default function IngredientsPage() {
                           <Edit2 size={16} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm('Delete this ingredient?'))
-                              deleteMutation.mutate(ingredient._id);
-                          }}
+                          onClick={() => setDeletingId(ingredient._id)}
                           className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
                         >
                           <Trash2 size={16} />

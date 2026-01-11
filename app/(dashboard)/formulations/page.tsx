@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Nutrient {
   protein: number;
@@ -68,6 +69,7 @@ export default function FormulationsPage() {
   const [complianceFilter, setComplianceFilter] = useState('');
   const [viewingFormulation, setViewingFormulation] =
     useState<Formulation | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: [
@@ -91,8 +93,13 @@ export default function FormulationsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/formulations/${id}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['admin-formulations'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-formulations'] });
+      setDeletingId(null);
+      if (viewingFormulation?._id === deletingId) {
+        setViewingFormulation(null);
+      }
+    },
   });
 
   // Filter locally for status and compliance since backend might not support all filters
@@ -344,10 +351,7 @@ export default function FormulationsPage() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
-                        onClick={() => {
-                          if (confirm('Delete this formulation?'))
-                            deleteMutation.mutate(f._id);
-                        }}
+                        onClick={() => setDeletingId(f._id)}
                         className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
                       >
                         <Trash2 size={16} />
@@ -503,6 +507,17 @@ export default function FormulationsPage() {
           />
         </>
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
+        isLoading={deleteMutation.isPending}
+        title="Delete Formulation"
+        message="Are you sure you want to delete this formulation? This action cannot be undone."
+        confirmText="Delete Formulation"
+      />
     </div>
   );
 }
