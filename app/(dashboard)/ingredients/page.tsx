@@ -10,8 +10,6 @@ import {
   Edit2,
   Trash2,
   X,
-  ChevronDown,
-  ChevronUp,
   Database,
 } from 'lucide-react';
 
@@ -133,8 +131,8 @@ export default function IngredientsPage() {
           </button>
         </div>
 
-        {/* Category Stats */}
-        <div className="grid grid-cols-5 gap-3">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {categoryStats.map((cat) => (
             <button
               key={cat.name}
@@ -155,8 +153,8 @@ export default function IngredientsPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
+          <div className="relative flex-1 w-full">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               size={18}
@@ -172,7 +170,7 @@ export default function IngredientsPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
           >
             <option value="">All Categories</option>
             {CATEGORIES.map((cat) => (
@@ -186,97 +184,99 @@ export default function IngredientsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table Container */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
-              <tr>
-                <th className="px-6 py-4">Name</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Price (₦/kg)</th>
-                <th className="px-6 py-4">Bag Weight</th>
-                <th className="px-6 py-4">Protein</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data?.map((ingredient) => (
-                <tr
-                  key={ingredient._id}
-                  className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
-                    viewingIngredient?._id === ingredient._id
-                      ? 'bg-primary/5'
-                      : ''
-                  }`}
-                  onClick={() => setViewingIngredient(ingredient)}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                        <Database size={16} />
-                      </div>
-                      <span className="font-medium text-gray-900">
-                        {ingredient.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
-                      {ingredient.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-mono text-gray-600">
-                    ₦{ingredient.defaultPrice?.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {ingredient.bagWeight
-                      ? `${ingredient.bagWeight} kg`
-                      : 'Loose'}
-                  </td>
-                  <td className="px-6 py-4 font-mono text-gray-600">
-                    {ingredient.nutrients?.protein?.toFixed(1)}%
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                        ingredient.isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {ingredient.isActive ? 'Active' : 'Archived'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-6 py-4 text-right"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => {
-                          setEditingIngredient(ingredient);
-                          setIsModalOpen(true);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('Delete this ingredient?'))
-                            deleteMutation.mutate(ingredient._id);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                <tr>
+                  <th className="px-6 py-4">Name</th>
+                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">Price (₦/kg)</th>
+                  <th className="px-6 py-4">Bag Weight</th>
+                  <th className="px-6 py-4">Protein</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data?.map((ingredient) => (
+                  <tr
+                    key={ingredient._id}
+                    className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
+                      viewingIngredient?._id === ingredient._id
+                        ? 'bg-primary/5'
+                        : ''
+                    }`}
+                    onClick={() => setViewingIngredient(ingredient)}
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                          <Database size={16} />
+                        </div>
+                        <span className="font-medium text-gray-900">
+                          {ingredient.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                        {ingredient.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-mono text-gray-600">
+                      ₦{ingredient.defaultPrice?.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {ingredient.bagWeight
+                        ? `${ingredient.bagWeight} kg`
+                        : 'Loose'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-gray-600">
+                      {ingredient.nutrients?.protein?.toFixed(1)}%
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                          ingredient.isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {ingredient.isActive ? 'Active' : 'Archived'}
+                      </span>
+                    </td>
+                    <td
+                      className="px-6 py-4 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingIngredient(ingredient);
+                            setIsModalOpen(true);
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Delete this ingredient?'))
+                              deleteMutation.mutate(ingredient._id);
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

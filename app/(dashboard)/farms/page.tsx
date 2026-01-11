@@ -110,7 +110,7 @@ export default function FarmsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white rounded-xl border border-gray-200">
             <div className="flex items-center gap-2 mb-2">
               <MapPin size={16} className="text-primary" />
@@ -145,8 +145,8 @@ export default function FarmsPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
+          <div className="relative flex-1 w-full">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               size={18}
@@ -161,80 +161,84 @@ export default function FarmsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table Container */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
-              <tr>
-                <th className="px-6 py-4">Farm</th>
-                <th className="px-6 py-4">Owner</th>
-                <th className="px-6 py-4">Location</th>
-                <th className="px-6 py-4">Ponds</th>
-                <th className="px-6 py-4">Total Fish</th>
-                <th className="px-6 py-4">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredFarms.map((farm: FarmProfile) => {
-                const totalFish =
-                  farm.ponds?.reduce((sum, p) => sum + (p.fishCount || 0), 0) ||
-                  0;
-                return (
-                  <tr
-                    key={farm._id}
-                    className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
-                      viewingFarm?._id === farm._id ? 'bg-primary/5' : ''
-                    }`}
-                    onClick={() => setViewingFarm(farm)}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                          <Fish size={16} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                <tr>
+                  <th className="px-6 py-4">Farm</th>
+                  <th className="px-6 py-4">Owner</th>
+                  <th className="px-6 py-4">Location</th>
+                  <th className="px-6 py-4">Ponds</th>
+                  <th className="px-6 py-4">Total Fish</th>
+                  <th className="px-6 py-4">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredFarms.map((farm: FarmProfile) => {
+                  const totalFish =
+                    farm.ponds?.reduce(
+                      (sum, p) => sum + (p.fishCount || 0),
+                      0
+                    ) || 0;
+                  return (
+                    <tr
+                      key={farm._id}
+                      className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
+                        viewingFarm?._id === farm._id ? 'bg-primary/5' : ''
+                      }`}
+                      onClick={() => setViewingFarm(farm)}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                            <Fish size={16} />
+                          </div>
+                          <span className="font-medium text-gray-900">
+                            {farm.name}
+                          </span>
                         </div>
-                        <span className="font-medium text-gray-900">
-                          {farm.name}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="text-gray-900">
+                            {farm.userId?.name || 'Unknown'}
+                          </p>
+                          <p className="text-gray-500 text-xs">
+                            {farm.userId?.email}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-gray-600">
+                          <MapPin size={14} />
+                          {typeof farm.location === 'object' &&
+                          farm.location !== null
+                            ? `${(farm.location as FarmLocation).lga || ''}, ${
+                                (farm.location as FarmLocation).state || ''
+                              }`
+                            : String(farm.location || '')}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700">
+                          <Droplets size={12} />
+                          {farm.ponds?.length || 0} ponds
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-gray-900">
-                          {farm.userId?.name || 'Unknown'}
-                        </p>
-                        <p className="text-gray-500 text-xs">
-                          {farm.userId?.email}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <MapPin size={14} />
-                        {typeof farm.location === 'object' &&
-                        farm.location !== null
-                          ? `${(farm.location as FarmLocation).lga || ''}, ${
-                              (farm.location as FarmLocation).state || ''
-                            }`
-                          : String(farm.location || '')}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700">
-                        <Droplets size={12} />
-                        {farm.ponds?.length || 0} ponds
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-gray-600">
-                      {totalFish.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-gray-500 text-xs">
-                      {new Date(farm.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-gray-600">
+                        {totalFish.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-gray-500 text-xs">
+                        {new Date(farm.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Pagination */}

@@ -100,7 +100,7 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             Categories
@@ -122,10 +122,10 @@ export default function CategoriesPage() {
       </div>
 
       {/* Type Filter Tabs */}
-      <div className="flex gap-2 bg-white p-2 rounded-xl border border-gray-200">
+      <div className="flex gap-2 bg-white p-2 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setTypeFilter('')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
             !typeFilter
               ? 'bg-primary text-white'
               : 'text-gray-600 hover:bg-gray-100'
@@ -137,7 +137,7 @@ export default function CategoriesPage() {
           <button
             key={type}
             onClick={() => setTypeFilter(type)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
               typeFilter === type
                 ? 'bg-primary text-white'
                 : 'text-gray-600 hover:bg-gray-100'
