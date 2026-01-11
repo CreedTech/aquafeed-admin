@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        const backendResponse = await fetch(`${API_URL}/auth/send-otp`, {
+        const backendResponse = await fetch(`${API_URL}/auth/request-otp`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
