@@ -92,13 +92,13 @@ export default function FarmsPage() {
   }
 
   return (
-    <div className="flex">
+    <div className="flex relative">
       <div
         className={`flex-1 space-y-6 transition-all ${
-          viewingFarm ? 'mr-[450px]' : ''
+          viewingFarm ? 'lg:mr-[420px]' : ''
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               Farm Profiles
@@ -161,8 +161,8 @@ export default function FarmsPage() {
           </div>
         </div>
 
-        {/* Table Container */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Desktop Table View */}
+        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
@@ -241,6 +241,80 @@ export default function FarmsPage() {
           </div>
         </div>
 
+        {/* Mobile Card View */}
+        <div className="sm:hidden space-y-4">
+          {filteredFarms.map((farm: FarmProfile) => {
+            const totalFish =
+              farm.ponds?.reduce((sum, p) => sum + (p.fishCount || 0), 0) || 0;
+            return (
+              <div
+                key={farm._id}
+                onClick={() => setViewingFarm(farm)}
+                className={`bg-white p-4 rounded-xl border transition-all active:scale-[0.98] ${
+                  viewingFarm?._id === farm._id
+                    ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                    : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
+                      <Fish size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 truncate">
+                        {farm.name}
+                      </p>
+                      <p className="text-gray-500 text-xs truncate">
+                        {farm.userId?.name || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700">
+                    <Droplets size={10} />
+                    {farm.ponds?.length || 0} Ponds
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-gray-600 mb-3 overflow-hidden">
+                  <MapPin size={14} className="shrink-0" />
+                  <span className="truncate">
+                    {typeof farm.location === 'object' && farm.location !== null
+                      ? `${(farm.location as FarmLocation).lga || ''}, ${
+                          (farm.location as FarmLocation).state || ''
+                        }`
+                      : String(farm.location || '')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 py-3 border-t border-gray-50">
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">
+                      Total Fish
+                    </p>
+                    <p className="text-sm font-mono font-bold text-gray-900">
+                      {totalFish.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">
+                      Created
+                    </p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {new Date(farm.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filteredFarms.length === 0 && (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+              <p className="text-gray-500 text-sm">No farms found</p>
+            </div>
+          )}
+        </div>
+
         {/* Pagination */}
         {data?.meta && (
           <div className="flex items-center justify-between text-sm text-gray-500">
@@ -270,10 +344,16 @@ export default function FarmsPage() {
 
       {/* Right Drawer */}
       {viewingFarm && (
-        <FarmDetailDrawer
-          farm={viewingFarm}
-          onClose={() => setViewingFarm(null)}
-        />
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 z-40 sm:hidden animate-in fade-in"
+            onClick={() => setViewingFarm(null)}
+          />
+          <FarmDetailDrawer
+            farm={viewingFarm}
+            onClose={() => setViewingFarm(null)}
+          />
+        </>
       )}
     </div>
   );
@@ -292,92 +372,118 @@ function FarmDetailDrawer({
     farm.ponds?.reduce((sum, p) => sum + (p.sizeInMeters || 0), 0) || 0;
 
   return (
-    <div className="fixed right-0 top-0 h-screen w-[450px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto z-40">
-      <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">{farm.name}</h2>
-            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-              <MapPin size={14} />
+    <div className="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-white border-l border-gray-200 shadow-xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
+      {/* Header */}
+      <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 flex items-center justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-gray-900 truncate">
+            {farm.name}
+          </h2>
+          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
+            <MapPin size={14} className="shrink-0" />
+            <span className="truncate">
               {typeof farm.location === 'object' && farm.location !== null
                 ? `${(farm.location as FarmLocation).lga || ''}, ${
                     (farm.location as FarmLocation).state || ''
                   }`
                 : String(farm.location || '')}
-            </div>
+            </span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
-            <X size={20} />
-          </button>
         </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Owner */}
-        <div className="flex items-center gap-4 p-4 border border-gray-200 rounded-xl">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+        <div className="flex items-center gap-4 p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
             {farm.userId?.name?.charAt(0).toUpperCase() || 'U'}
           </div>
-          <div>
-            <p className="font-medium text-gray-900">{farm.userId?.name}</p>
-            <p className="text-sm text-gray-500">{farm.userId?.email}</p>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 truncate">
+              {farm.userId?.name}
+            </p>
+            <p className="text-sm text-gray-500 truncate">
+              {farm.userId?.email}
+            </p>
           </div>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="p-4 bg-gray-50 rounded-xl text-center">
-            <p className="text-2xl font-bold text-gray-900">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100/50">
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+              Ponds
+            </p>
+            <p className="text-xl font-bold text-gray-900">
               {farm.ponds?.length || 0}
             </p>
-            <p className="text-xs text-gray-500">Ponds</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-xl text-center">
-            <p className="text-2xl font-bold text-gray-900">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100/50">
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+              Fish
+            </p>
+            <p className="text-xl font-bold text-gray-900 truncate">
               {totalFish.toLocaleString()}
             </p>
-            <p className="text-xs text-gray-500">Fish</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-xl text-center">
-            <p className="text-2xl font-bold text-gray-900">{totalArea}</p>
-            <p className="text-xs text-gray-500">m² Total</p>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100/50 col-span-2 sm:col-span-1">
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+              m² Total
+            </p>
+            <p className="text-xl font-bold text-gray-900">{totalArea}</p>
           </div>
         </div>
 
         {/* Ponds */}
         {farm.ponds && farm.ponds.length > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-700">
               Ponds ({farm.ponds.length})
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {farm.ponds.map((pond, idx) => (
-                <div key={idx} className="p-4 bg-gray-50 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-gray-900">
+                <div
+                  key={idx}
+                  className="p-4 bg-white border border-gray-100 rounded-xl shadow-sm space-y-3"
+                >
+                  <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                    <span className="font-bold text-gray-900">
                       Pond #{pond.pondNumber}
                     </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="px-2 py-0.5 bg-gray-50 text-gray-600 rounded text-xs font-medium">
                       {pond.sizeInMeters} m²
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-xs text-gray-500">Fish Count</p>
-                      <p className="font-medium">
+                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter mb-0.5">
+                        Fish Count
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900 font-mono">
                         {pond.fishCount?.toLocaleString()}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Fish Type</p>
-                      <p className="font-medium">{pond.fishType}</p>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter mb-0.5">
+                        Fish Type
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {pond.fishType}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Stage</p>
-                      <p className="font-medium">{pond.stage}</p>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter mb-0.5">
+                        Stage
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {pond.stage}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -387,18 +493,30 @@ function FarmDetailDrawer({
         )}
 
         {/* Meta */}
-        <div className="border-t border-gray-200 pt-4 space-y-2 text-sm text-gray-500">
-          <div className="flex justify-between">
-            <span>Created</span>
-            <span>{new Date(farm.createdAt).toLocaleDateString()}</span>
+        <div className="bg-gray-50 rounded-2xl p-5 space-y-3">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-gray-400 font-bold uppercase tracking-wider">
+              Created
+            </span>
+            <span className="text-gray-700 font-medium">
+              {new Date(farm.createdAt).toLocaleDateString()}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Updated</span>
-            <span>{new Date(farm.updatedAt).toLocaleDateString()}</span>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-gray-400 font-bold uppercase tracking-wider">
+              Last Updated
+            </span>
+            <span className="text-gray-700 font-medium">
+              {new Date(farm.updatedAt).toLocaleDateString()}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>Farm ID</span>
-            <span className="font-mono text-xs">{farm._id}</span>
+          <div className="border-t border-gray-100 pt-3 flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">
+              Farm ID
+            </span>
+            <span className="font-mono text-[10px] text-gray-400 text-center break-all">
+              {farm._id}
+            </span>
           </div>
         </div>
       </div>
