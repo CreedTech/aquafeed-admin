@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
+import { useDebounce } from '@/hooks/useDebounce';
+import { keepPreviousData } from '@tanstack/react-query';
 import { Loader2, Search, X, MapPin, Fish, Droplets } from 'lucide-react';
 
 interface Pond {
@@ -32,58 +34,44 @@ interface FarmProfile {
 export default function FarmsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [viewingFarm, setViewingFarm] = useState<FarmProfile | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-farms', page, search],
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['admin-farms', page, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append('page', page.toString());
       params.append('limit', '10');
+      if (debouncedSearch) params.append('search', debouncedSearch);
       const { data } = await api.get(`/admin/farms?${params.toString()}`);
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
-  const farms = data?.data || [];
-
-  // Filter locally by search on name or location
-  const getLocationString = (loc: string | FarmLocation): string => {
-    if (typeof loc === 'object' && loc !== null) {
-      return `${loc.lga || ''} ${loc.state || ''} ${loc.address || ''}`;
-    }
-    return String(loc || '');
-  };
-
-  const filteredFarms = farms.filter(
-    (f: FarmProfile) =>
-      !search ||
-      f.name?.toLowerCase().includes(search.toLowerCase()) ||
-      getLocationString(f.location)
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      f.userId?.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Data is now filtered on the server
+  const filteredFarms = data?.data || [];
 
   // Stats
   const stats = {
     total: data?.meta?.total || 0,
-    totalPonds: farms.reduce(
+    totalPonds: filteredFarms.reduce(
       (sum: number, f: FarmProfile) => sum + (f.ponds?.length || 0),
       0
     ),
-    totalFish: farms.reduce(
+    totalFish: filteredFarms.reduce(
       (sum: number, f: FarmProfile) =>
         sum +
         f.ponds?.reduce((s: number, p: Pond) => s + (p.fishCount || 0), 0),
       0
     ),
-    catfishPonds: farms
+    catfishPonds: filteredFarms
       .flatMap((f: FarmProfile) => f.ponds || [])
       .filter((p: Pond) => p.fishType === 'Catfish').length,
   };
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -162,7 +150,11 @@ export default function FarmsPage() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity duration-200 ${
+            isPlaceholderData ? 'opacity-50' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">

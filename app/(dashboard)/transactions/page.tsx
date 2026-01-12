@@ -12,6 +12,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
+import { keepPreviousData } from '@tanstack/react-query';
 
 interface Transaction {
   _id: string;
@@ -32,7 +33,7 @@ export default function TransactionsPage() {
   const [viewingTransaction, setViewingTransaction] =
     useState<Transaction | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: ['admin-transactions', page, typeFilter, statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -45,9 +46,10 @@ export default function TransactionsPage() {
       );
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -166,7 +168,11 @@ export default function TransactionsPage() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity duration-200 ${
+            isPlaceholderData ? 'opacity-50' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">

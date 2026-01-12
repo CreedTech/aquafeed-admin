@@ -17,6 +17,10 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { keepPreviousData } from '@tanstack/react-query';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface User {
   _id: string;
@@ -79,22 +83,28 @@ interface Transaction {
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'block' | 'unblock' | null>(
+    null
+  );
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['users', search, roleFilter, page],
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['users', debouncedSearch, roleFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (roleFilter) params.append('role', roleFilter);
       params.append('page', page.toString());
       params.append('limit', '10');
       const { data } = await api.get(`/admin/users?${params.toString()}`);
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
   const toggleBlockMutation = useMutation({
@@ -112,7 +122,36 @@ export default function UsersPage() {
     },
   });
 
-  if (isLoading) {
+  const bulkBlockMutation = useMutation({
+    mutationFn: ({ ids, isActive }: { ids: string[]; isActive: boolean }) =>
+      api.post('/admin/users/bulk-block', { ids, isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setSelectedIds(new Set());
+      setBulkAction(null);
+    },
+  });
+
+  const handleSelectAll = () => {
+    const users = data?.data || [];
+    if (selectedIds.size === users.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(users.map((u: User) => u._id)));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -175,11 +214,28 @@ export default function UsersPage() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity duration-200 ${
+            isPlaceholderData ? 'opacity-50' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
+                  <th className="px-6 py-4 w-12">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={
+                          data?.data?.length > 0 &&
+                          selectedIds.size === data?.data?.length
+                        }
+                        onChange={handleSelectAll}
+                      />
+                    </div>
+                  </th>
                   <th className="px-6 py-4">User</th>
                   <th className="px-6 py-4">Role</th>
                   <th className="px-6 py-4">Wallet</th>
@@ -197,6 +253,19 @@ export default function UsersPage() {
                     }`}
                     onClick={() => setViewingUser(user)}
                   >
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          checked={selectedIds.has(user._id)}
+                          onChange={() => handleSelectOne(user._id)}
+                        />
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
@@ -426,6 +495,50 @@ export default function UsersPage() {
           />
         )}
       </div>
+
+      {/* Bulk Action Toolbar */}
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Block Selected',
+            icon: <Ban size={16} />,
+            variant: 'danger',
+            onClick: () => setBulkAction('block'),
+          },
+          {
+            label: 'Unblock Selected',
+            icon: <CheckCircle size={16} />,
+            variant: 'default',
+            onClick: () => setBulkAction('unblock'),
+          },
+        ]}
+      />
+
+      {/* Bulk Block/Unblock Visual Confirm */}
+      <ConfirmModal
+        isOpen={!!bulkAction}
+        onClose={() => setBulkAction(null)}
+        onConfirm={() =>
+          bulkBlockMutation.mutate({
+            ids: Array.from(selectedIds),
+            isActive: bulkAction === 'unblock',
+          })
+        }
+        isLoading={bulkBlockMutation.isPending}
+        title={`${bulkAction === 'block' ? 'Block' : 'Unblock'} ${
+          selectedIds.size
+        } Users?`}
+        message={`Are you sure you want to ${
+          bulkAction === 'block' ? 'block' : 'unblock'
+        } these users? ${
+          bulkAction === 'block'
+            ? 'Blocked users cannot access the platform.'
+            : 'They will regain access immediately.'
+        }`}
+        confirmText={bulkAction === 'block' ? 'Block Users' : 'Unblock Users'}
+      />
 
       {/* User Details Side Panel */}
       {viewingUser && (

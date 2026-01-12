@@ -15,6 +15,9 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { useDebounce } from '@/hooks/useDebounce';
+import { keepPreviousData } from '@tanstack/react-query';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
 
 interface Nutrient {
   protein: number;
@@ -65,17 +68,20 @@ export default function FormulationsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [complianceFilter, setComplianceFilter] = useState('');
   const [viewingFormulation, setViewingFormulation] =
     useState<Formulation | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: [
       'admin-formulations',
       page,
-      search,
+      debouncedSearch,
       statusFilter,
       complianceFilter,
     ],
@@ -83,12 +89,16 @@ export default function FormulationsPage() {
       const params = new URLSearchParams();
       params.append('page', page.toString());
       params.append('limit', '10');
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (statusFilter) params.append('status', statusFilter);
+      if (complianceFilter) params.append('compliance', complianceFilter);
+
       const { data } = await api.get(
         `/admin/formulations?${params.toString()}`
       );
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
   const deleteMutation = useMutation({
@@ -102,25 +112,46 @@ export default function FormulationsPage() {
     },
   });
 
-  // Filter locally for status and compliance since backend might not support all filters
-  let filteredData = data?.data || [];
-  if (statusFilter) {
-    if (statusFilter === 'unlocked')
-      filteredData = filteredData.filter((f: Formulation) => f.isUnlocked);
-    else if (statusFilter === 'demo')
-      filteredData = filteredData.filter((f: Formulation) => f.isDemo);
-    else if (statusFilter === 'locked')
-      filteredData = filteredData.filter(
-        (f: Formulation) => !f.isUnlocked && !f.isDemo
-      );
-  }
-  if (complianceFilter) {
-    filteredData = filteredData.filter(
-      (f: Formulation) => f.complianceColor === complianceFilter
-    );
-  }
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      api.post('/admin/formulations/bulk-delete', { ids }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-formulations'] });
+      setSelectedIds(new Set());
+      const selectedArray = Array.from(selectedIds);
+      if (
+        viewingFormulation &&
+        selectedArray.includes(viewingFormulation._id)
+      ) {
+        setViewingFormulation(null);
+      }
+      setIsBulkDeleting(false);
+    },
+  });
 
-  if (isLoading) {
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredData.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredData.map((f: Formulation) => f._id)));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  // Data is now filtered on the server
+  const filteredData = data?.data || [];
+
+  // Only show loader on initial mount (when no data exists yet)
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -216,7 +247,10 @@ export default function FormulationsPage() {
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
               className="flex-1 sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">All Status</option>
@@ -226,7 +260,10 @@ export default function FormulationsPage() {
             </select>
             <select
               value={complianceFilter}
-              onChange={(e) => setComplianceFilter(e.target.value)}
+              onChange={(e) => {
+                setComplianceFilter(e.target.value);
+                setPage(1);
+              }}
               className="flex-1 sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">All Quality</option>
@@ -238,11 +275,28 @@ export default function FormulationsPage() {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity duration-200 ${
+            isPlaceholderData ? 'opacity-50' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[1000px] lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
+                  <th className="px-6 py-4 w-12">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={
+                          filteredData.length > 0 &&
+                          selectedIds.size === filteredData.length
+                        }
+                        onChange={handleSelectAll}
+                      />
+                    </div>
+                  </th>
                   <th className="px-6 py-4">Batch</th>
                   <th className="px-6 py-4">User</th>
                   <th className="px-6 py-4">Standard</th>
@@ -263,6 +317,19 @@ export default function FormulationsPage() {
                     }`}
                     onClick={() => setViewingFormulation(f)}
                   >
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          checked={selectedIds.has(f._id)}
+                          onChange={() => handleSelectOne(f._id)}
+                        />
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 text-primary rounded-lg">
@@ -458,6 +525,7 @@ export default function FormulationsPage() {
                   <Trash2 size={16} />
                 </button>
               </div>
+              {/* Mobile Bulk Selection Visual (Optional, or just hide) */}
             </div>
           ))}
           {filteredData.length === 0 && (
@@ -517,6 +585,31 @@ export default function FormulationsPage() {
         title="Delete Formulation"
         message="Are you sure you want to delete this formulation? This action cannot be undone."
         confirmText="Delete Formulation"
+      />
+
+      {/* Bulk Action Toolbar */}
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Delete',
+            icon: <Trash2 size={16} />,
+            variant: 'danger',
+            onClick: () => setIsBulkDeleting(true),
+          },
+        ]}
+      />
+
+      {/* Bulk Delete Confirm Modal */}
+      <ConfirmModal
+        isOpen={isBulkDeleting}
+        onClose={() => setIsBulkDeleting(false)}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        isLoading={bulkDeleteMutation.isPending}
+        title={`Delete ${selectedIds.size} Formulations?`}
+        message="Are you sure you want to delete these formulations? This action cannot be undone."
+        confirmText="Delete Selected"
       />
     </div>
   );

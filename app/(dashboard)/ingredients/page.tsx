@@ -359,10 +359,7 @@ export default function IngredientsPage() {
                     <Edit2 size={16} />
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm('Delete this ingredient?'))
-                        deleteMutation.mutate(ingredient._id);
-                    }}
+                    onClick={() => setDeletingId(ingredient._id)}
                     className="p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600"
                   >
                     <Trash2 size={16} />
@@ -409,6 +406,17 @@ export default function IngredientsPage() {
           isLoading={createMutation.isPending || updateMutation.isPending}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
+        isLoading={deleteMutation.isPending}
+        title="Delete Ingredient"
+        message="Are you sure you want to delete this ingredient? This action cannot be undone."
+        confirmText="Delete Ingredient"
+      />
     </div>
   );
 }
