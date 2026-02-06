@@ -23,8 +23,8 @@ interface Nutrient {
 interface FeedStandard {
   _id: string;
   name: string;
-  fishType: 'Catfish' | 'Tilapia' | 'Both';
-  stage: 'Starter' | 'Grower' | 'Finisher';
+  stage: 'Fry' | 'Fingerling' | 'Grower' | 'Finisher';
+  fishType: string; // Dynamic from Categories
   description?: string;
   targetNutrients: {
     protein: Nutrient;
@@ -48,10 +48,10 @@ export default function StandardsPage() {
   const [stageFilter, setStageFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStandard, setEditingStandard] = useState<FeedStandard | null>(
-    null
+    null,
   );
   const [viewingStandard, setViewingStandard] = useState<FeedStandard | null>(
-    null
+    null,
   );
 
   const { data, isLoading } = useQuery({
@@ -62,6 +62,15 @@ export default function StandardsPage() {
       if (stageFilter) params.append('stage', stageFilter);
       const { data } = await api.get(`/standards?${params.toString()}`);
       return data.standards as FeedStandard[];
+    },
+  });
+
+  // Fetch fish types from categories
+  const { data: fishTypes } = useQuery({
+    queryKey: ['categories', 'fish_type'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/categories?type=fish_type');
+      return data.categories as { name: string; displayName: string }[];
     },
   });
 
@@ -99,7 +108,7 @@ export default function StandardsPage() {
 
   // Filter by search
   const filteredData = data?.filter(
-    (s) => !search || s.name.toLowerCase().includes(search.toLowerCase())
+    (s) => !search || s.name.toLowerCase().includes(search.toLowerCase()),
   );
 
   if (isLoading) {
@@ -180,9 +189,11 @@ export default function StandardsPage() {
               className="flex-1 sm:w-[160px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Fish Types</option>
-              <option value="Catfish">Catfish</option>
-              <option value="Tilapia">Tilapia</option>
-              <option value="Both">Both</option>
+              {fishTypes?.map((ft) => (
+                <option key={ft.name} value={ft.name}>
+                  {ft.displayName}
+                </option>
+              ))}
             </select>
             <select
               value={stageFilter}
@@ -190,7 +201,8 @@ export default function StandardsPage() {
               className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Stages</option>
-              <option value="Starter">Starter</option>
+              <option value="Fry">Fry</option>
+              <option value="Fingerling">Fingerling</option>
               <option value="Grower">Grower</option>
               <option value="Finisher">Finisher</option>
             </select>
@@ -412,6 +424,7 @@ export default function StandardsPage() {
       {isModalOpen && (
         <StandardModal
           standard={editingStandard}
+          fishTypes={fishTypes}
           onClose={() => {
             setIsModalOpen(false);
             setEditingStandard(null);
@@ -524,7 +537,7 @@ function StandardDetailDrawer({
                     </div>
                   </div>
                 </div>
-              )
+              ),
             )}
           </div>
         </div>
@@ -555,11 +568,13 @@ function StandardDetailDrawer({
 
 function StandardModal({
   standard,
+  fishTypes,
   onClose,
   onSubmit,
   isLoading,
 }: {
   standard: FeedStandard | null;
+  fishTypes?: { name: string; displayName: string }[];
   onClose: () => void;
   onSubmit: (data: Partial<FeedStandard>) => void;
   isLoading: boolean;
@@ -578,7 +593,7 @@ function StandardModal({
   const [form, setForm] = useState({
     name: standard?.name || '',
     fishType: standard?.fishType || 'Catfish',
-    stage: standard?.stage || 'Grower',
+    stage: standard?.stage || 'Fry',
     description: standard?.description || '',
     isActive: standard?.isActive ?? true,
     isDefault: standard?.isDefault ?? false,
@@ -646,9 +661,11 @@ function StandardModal({
                 }
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               >
-                <option value="Catfish">Catfish</option>
-                <option value="Tilapia">Tilapia</option>
-                <option value="Both">Both</option>
+                {fishTypes?.map((ft) => (
+                  <option key={ft.name} value={ft.name}>
+                    {ft.displayName}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -665,7 +682,8 @@ function StandardModal({
                 }
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               >
-                <option value="Starter">Starter</option>
+                <option value="Fry">Fry</option>
+                <option value="Fingerling">Fingerling</option>
                 <option value="Grower">Grower</option>
                 <option value="Finisher">Finisher</option>
               </select>
