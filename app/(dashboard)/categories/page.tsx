@@ -1,79 +1,115 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
-  Loader2,
-  Plus,
-  Edit2,
-  Trash2,
-  X,
-  Tag,
-  Fish,
+  ArrowDownAZ,
+  ArrowUpAZ,
   Activity,
   Database,
+  Edit2,
+  Fish,
+  Loader2,
+  Plus,
+  Search,
+  Shapes,
+  Tag,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
+import { useDebounce } from '@/hooks/useDebounce';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 
 interface Category {
   _id: string;
   name: string;
-  type: 'ingredient' | 'fish_type' | 'stage';
+  displayName: string;
+  type: 'ingredient' | 'fish_type' | 'stage' | 'other';
   description?: string;
   isActive: boolean;
   sortOrder: number;
   createdAt: string;
 }
 
-const TYPE_CONFIG = {
+type SortKey = 'name' | 'displayName' | 'type' | 'sortOrder' | 'status';
+type SortDirection = 'asc' | 'desc';
+
+const TYPE_CONFIG: Record<
+  Category['type'],
+  {
+    label: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    badge: string;
+  }
+> = {
   ingredient: {
-    label: 'Ingredient Types',
+    label: 'Ingredient',
     icon: Database,
-    color: 'bg-blue-50 text-blue-700',
+    badge: 'bg-blue-50 text-blue-700',
   },
   fish_type: {
-    label: 'Fish Types',
+    label: 'Fish Type',
     icon: Fish,
-    color: 'bg-green-50 text-green-700',
+    badge: 'bg-emerald-50 text-emerald-700',
   },
   stage: {
-    label: 'Feed Stages',
+    label: 'Feed Stage',
     icon: Activity,
-    color: 'bg-purple-50 text-purple-700',
+    badge: 'bg-amber-50 text-amber-700',
+  },
+  other: {
+    label: 'Other',
+    icon: Shapes,
+    badge: 'bg-gray-100 text-gray-700',
   },
 };
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [typeFilter, setTypeFilter] = useState<Category['type'] | ''>('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['categories', typeFilter],
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['admin-categories'],
     queryFn: async () => {
-      const params = typeFilter ? `?type=${typeFilter}` : '';
-      const { data } = await api.get(`/admin/categories${params}`);
-      return data.categories as Category[];
+      const { data } = await api.get('/admin/categories');
+      return (data.categories as Category[]) || [];
     },
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Category>) =>
-      api.post('/admin/categories', data),
+    mutationFn: (payload: Partial<Category>) => api.post('/admin/categories', payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
       setIsModalOpen(false);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Category> }) =>
-      api.put(`/admin/categories/${id}`, data),
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<Category> }) =>
+      api.put(`/admin/categories/${id}`, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
       setIsModalOpen(false);
       setEditingCategory(null);
     },
@@ -81,20 +117,107 @@ export default function CategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/categories/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    onSuccess: (_response, id) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
       setDeletingId(null);
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
   });
 
-  // Group by type
-  const groupedCategories = {
-    ingredient: data?.filter((c) => c.type === 'ingredient') || [],
-    fish_type: data?.filter((c) => c.type === 'fish_type') || [],
-    stage: data?.filter((c) => c.type === 'stage') || [],
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => api.delete(`/admin/categories/${id}`))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleting(false);
+    },
+  });
+
+  const filteredData = useMemo(() => {
+    const base = data || [];
+    const filtered = base.filter((category) => {
+      const matchesSearch =
+        !debouncedSearch ||
+        category.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        category.displayName
+          ?.toLowerCase()
+          .includes(debouncedSearch.toLowerCase()) ||
+        category.description
+          ?.toLowerCase()
+          .includes(debouncedSearch.toLowerCase());
+      const matchesType = !typeFilter || category.type === typeFilter;
+      const matchesStatus = !statusFilter
+        ? true
+        : statusFilter === 'active'
+          ? category.isActive
+          : !category.isActive;
+
+      return matchesSearch && matchesType && matchesStatus;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
+      if (sortKey === 'displayName')
+        return a.displayName.localeCompare(b.displayName) * dir;
+      if (sortKey === 'type') return a.type.localeCompare(b.type) * dir;
+      if (sortKey === 'sortOrder') return (a.sortOrder - b.sortOrder) * dir;
+      return (Number(a.isActive) - Number(b.isActive)) * dir;
+    });
+  }, [data, debouncedSearch, typeFilter, statusFilter, sortDirection, sortKey]);
+
+  const totalItems = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const start = (currentPage - 1) * pageSize;
+  const paginatedData = filteredData.slice(start, start + pageSize);
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
   };
 
-  if (isLoading) {
+  const handleSelectOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const allCurrentSelected =
+    paginatedData.length > 0 &&
+    paginatedData.every((category) => selectedIds.has(category._id));
+
+  const handleSelectAll = () => {
+    const next = new Set(selectedIds);
+    if (allCurrentSelected) {
+      paginatedData.forEach((category) => next.delete(category._id));
+    } else {
+      paginatedData.forEach((category) => next.add(category._id));
+    }
+    setSelectedIds(next);
+  };
+
+  const stats = {
+    total: data?.length || 0,
+    active: data?.filter((category) => category.isActive).length || 0,
+    inactive: data?.filter((category) => !category.isActive).length || 0,
+    ingredient: data?.filter((category) => category.type === 'ingredient').length || 0,
+    fishType: data?.filter((category) => category.type === 'fish_type').length || 0,
+    stage: data?.filter((category) => category.type === 'stage').length || 0,
+  };
+
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -107,10 +230,11 @@ export default function CategoriesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Categories
+            Category Management
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Manage ingredient types, fish types, and feed stages
+            Centralize ingredient groups, fish types, and feeding stages used
+            across app and admin.
           </p>
         </div>
         <button
@@ -118,118 +242,314 @@ export default function CategoriesPage() {
             setEditingCategory(null);
             setIsModalOpen(true);
           }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors w-full sm:w-auto"
         >
           <Plus size={18} />
-          <span>Add Category</span>
+          Add Category
         </button>
       </div>
 
-      {/* Type Filter Tabs */}
-      <div className="flex gap-2 bg-white p-2 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setTypeFilter('')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-            !typeFilter
-              ? 'bg-primary text-white'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+        <StatCard label="Total" value={stats.total} />
+        <StatCard label="Active" value={stats.active} highlight />
+        <StatCard label="Inactive" value={stats.inactive} />
+        <StatCard label="Ingredient" value={stats.ingredient} />
+        <StatCard label="Fish Type" value={stats.fishType} />
+        <StatCard label="Stage" value={stats.stage} />
+      </div>
+
+      <div className="flex flex-col lg:flex-row lg:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200">
+        <div className="relative flex-1 w-full">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            size={18}
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by code name, label or description..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+          />
+        </div>
+
+        <select
+          value={typeFilter}
+          onChange={(e) => {
+            setTypeFilter(e.target.value as Category['type'] | '');
+            setPage(1);
+          }}
+          className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
         >
-          All ({data?.length || 0})
-        </button>
-        {Object.entries(TYPE_CONFIG).map(([type, config]) => (
-          <button
-            key={type}
-            onClick={() => setTypeFilter(type)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              typeFilter === type
-                ? 'bg-primary text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <config.icon size={16} />
-            {config.label} (
-            {groupedCategories[type as keyof typeof groupedCategories].length})
-          </button>
-        ))}
+          <option value="">All Types</option>
+          {Object.entries(TYPE_CONFIG).map(([value, config]) => (
+            <option key={value} value={value}>
+              {config.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+        >
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+        <select
+          value={`${sortKey}:${sortDirection}`}
+          onChange={(e) => {
+            const [key, direction] = e.target.value.split(':') as [
+              SortKey,
+              SortDirection,
+            ];
+            setSortKey(key);
+            setSortDirection(direction);
+          }}
+          className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+        >
+          <option value="name:asc">Code Name (A-Z)</option>
+          <option value="name:desc">Code Name (Z-A)</option>
+          <option value="displayName:asc">Label (A-Z)</option>
+          <option value="sortOrder:asc">Sort Order (Low-High)</option>
+          <option value="sortOrder:desc">Sort Order (High-Low)</option>
+        </select>
       </div>
 
-      {/* Category Groups */}
-      {(!typeFilter ? Object.keys(TYPE_CONFIG) : [typeFilter]).map((type) => {
-        const categories =
-          groupedCategories[type as keyof typeof groupedCategories];
-        const config = TYPE_CONFIG[type as keyof typeof TYPE_CONFIG];
-        if (categories.length === 0) return null;
+      <div
+        className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity ${
+          isPlaceholderData ? 'opacity-60' : 'opacity-100'
+        }`}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[980px]">
+            <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+              <tr>
+                <th className="px-6 py-4 w-12">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    checked={allCurrentSelected}
+                    onChange={handleSelectAll}
+                  />
+                </th>
+                <th className="px-6 py-4">
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => setSort('name')}
+                  >
+                    Code Name
+                    {sortKey === 'name' && sortDirection === 'asc' ? (
+                      <ArrowDownAZ size={14} />
+                    ) : null}
+                    {sortKey === 'name' && sortDirection === 'desc' ? (
+                      <ArrowUpAZ size={14} />
+                    ) : null}
+                  </button>
+                </th>
+                <th className="px-6 py-4">
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => setSort('displayName')}
+                  >
+                    Display Label
+                  </button>
+                </th>
+                <th className="px-6 py-4">
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => setSort('type')}
+                  >
+                    Type
+                  </button>
+                </th>
+                <th className="px-6 py-4">Description</th>
+                <th className="px-6 py-4">
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => setSort('sortOrder')}
+                  >
+                    Sort Order
+                  </button>
+                </th>
+                <th className="px-6 py-4">
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => setSort('status')}
+                  >
+                    Status
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {paginatedData.map((category) => {
+                const typeConfig = TYPE_CONFIG[category.type];
+                const TypeIcon = typeConfig.icon;
+                return (
+                  <tr key={category._id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={selectedIds.has(category._id)}
+                        onChange={() => handleSelectOne(category._id)}
+                      />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Tag size={14} className="text-gray-400" />
+                        <span className="font-semibold text-gray-900">
+                          {category.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-gray-700">{category.displayName}</td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${typeConfig.badge}`}
+                      >
+                        <TypeIcon size={12} />
+                        {typeConfig.label}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-500 max-w-[280px] truncate">
+                      {category.description || '-'}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-gray-700">
+                      {category.sortOrder}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                          category.isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {category.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingCategory(category);
+                            setIsModalOpen(true);
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => setDeletingId(category._id)}
+                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {paginatedData.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                    No categories match your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-        return (
-          <div
-            key={type}
-            className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-          >
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <config.icon size={18} className="text-gray-600" />
-              <h3 className="font-semibold text-gray-900">{config.label}</h3>
-              <span className="px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-600">
-                {categories.length}
-              </span>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {categories.map((category) => (
-                <div
-                  key={category._id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 hover:bg-gray-50 gap-4"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                      <Tag size={18} />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {category.name}
-                      </p>
-                      {category.description && (
-                        <p className="text-sm text-gray-500">
-                          {category.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                        category.isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {category.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setEditingCategory(category);
-                          setIsModalOpen(true);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-primary transition-colors"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => setDeletingId(category._id)}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
+      <div className="sm:hidden space-y-4">
+        {paginatedData.map((category) => {
+          const typeConfig = TYPE_CONFIG[category.type];
+          const TypeIcon = typeConfig.icon;
+          return (
+            <div key={category._id} className="bg-white p-4 rounded-xl border border-gray-200">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-gray-900">{category.displayName}</p>
+                  <p className="text-xs text-gray-500 font-mono mt-0.5">{category.name}</p>
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    category.isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {category.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
 
-      {/* Modal */}
+              <div className="flex items-center justify-between mt-3">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold ${typeConfig.badge}`}
+                >
+                  <TypeIcon size={12} />
+                  {typeConfig.label}
+                </span>
+                <span className="text-xs text-gray-500">Order {category.sortOrder}</span>
+              </div>
+
+              {category.description && (
+                <p className="text-xs text-gray-500 mt-3">{category.description}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setEditingCategory(category);
+                    setIsModalOpen(true);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  onClick={() => setDeletingId(category._id)}
+                  className="p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {paginatedData.length === 0 && (
+          <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+            <p className="text-gray-500 text-sm">No categories found</p>
+          </div>
+        )}
+      </div>
+
+      <PaginationBar
+        page={currentPage}
+        totalPages={totalPages}
+        totalItems={totalItems}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        itemLabel="categories"
+      />
+
       {isModalOpen && (
         <CategoryModal
           category={editingCategory}
@@ -237,25 +557,69 @@ export default function CategoriesPage() {
             setIsModalOpen(false);
             setEditingCategory(null);
           }}
-          onSubmit={(data) => {
-            if (editingCategory)
-              updateMutation.mutate({ id: editingCategory._id, data });
-            else createMutation.mutate(data);
+          onSubmit={(payload) => {
+            if (editingCategory) {
+              updateMutation.mutate({ id: editingCategory._id, payload });
+            } else {
+              createMutation.mutate(payload);
+            }
           }}
           isLoading={createMutation.isPending || updateMutation.isPending}
         />
       )}
 
-      {/* Confirm Delete Modal */}
       <ConfirmModal
         isOpen={!!deletingId}
         onClose={() => setDeletingId(null)}
         onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
         isLoading={deleteMutation.isPending}
         title="Delete Category"
-        message="Are you sure you want to delete this category? This action cannot be undone and may affect related items."
+        message="Are you sure you want to delete this category? This action cannot be undone."
         confirmText="Delete Category"
       />
+
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Delete Selected',
+            onClick: () => setIsBulkDeleting(true),
+            variant: 'danger',
+          },
+        ]}
+      />
+
+      <ConfirmModal
+        isOpen={isBulkDeleting}
+        onClose={() => setIsBulkDeleting(false)}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        isLoading={bulkDeleteMutation.isPending}
+        title={`Delete ${selectedIds.size} Categories?`}
+        message="This will permanently remove all selected categories."
+        confirmText="Delete All"
+      />
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="p-4 bg-white rounded-xl border border-gray-200">
+      <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">
+        {label}
+      </p>
+      <p className={`text-2xl font-bold ${highlight ? 'text-primary' : 'text-gray-900'}`}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -268,107 +632,136 @@ function CategoryModal({
 }: {
   category: Category | null;
   onClose: () => void;
-  onSubmit: (data: Partial<Category>) => void;
+  onSubmit: (payload: Partial<Category>) => void;
   isLoading: boolean;
 }) {
   const [form, setForm] = useState({
     name: category?.name || '',
-    type: category?.type || 'ingredient',
+    displayName: category?.displayName || '',
+    type: category?.type || ('ingredient' as Category['type']),
     description: category?.description || '',
-    isActive: category?.isActive ?? true,
     sortOrder: category?.sortOrder || 0,
+    isActive: category?.isActive ?? true,
   });
+
+  const handleSubmit = () => {
+    const name = form.name.trim();
+    const displayName = form.displayName.trim() || name;
+    onSubmit({
+      name,
+      displayName,
+      type: form.type,
+      description: form.description.trim(),
+      sortOrder: form.sortOrder,
+      isActive: form.isActive,
+    });
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl w-full max-w-lg">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">
             {category ? 'Edit Category' : 'Add Category'}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
             <X size={20} />
           </button>
         </div>
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit(form);
+            handleSubmit();
           }}
           className="p-6 space-y-4"
         >
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Name
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Code Name
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+                placeholder="e.g. PROTEIN"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Display Label
+              </label>
+              <input
+                type="text"
+                value={form.displayName}
+                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                required
+                placeholder="e.g. Protein Sources"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Type
-            </label>
-            <select
-              value={form.type}
-              onChange={(e) =>
-                setForm({ ...form, type: e.target.value as Category['type'] })
-              }
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-            >
-              <option value="ingredient">Ingredient Type</option>
-              <option value="fish_type">Fish Type</option>
-              <option value="stage">Feed Stage</option>
-            </select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Type
+              </label>
+              <select
+                value={form.type}
+                onChange={(e) =>
+                  setForm({ ...form, type: e.target.value as Category['type'] })
+                }
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+              >
+                <option value="ingredient">Ingredient</option>
+                <option value="fish_type">Fish Type</option>
+                <option value="stage">Feed Stage</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Sort Order
+              </label>
+              <input
+                type="number"
+                value={form.sortOrder}
+                onChange={(e) =>
+                  setForm({ ...form, sortOrder: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+              />
+            </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Description (optional)
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Sort Order
-            </label>
-            <input
-              type="number"
-              value={form.sortOrder}
-              onChange={(e) =>
-                setForm({ ...form, sortOrder: Number(e.target.value) })
-              }
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-3">
+
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              id="isActive"
               checked={form.isActive}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-              className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+              className="w-4 h-4 text-primary border-gray-300 rounded"
             />
-            <label
-              htmlFor="isActive"
-              className="text-sm font-medium text-gray-700"
-            >
-              Active
-            </label>
-          </div>
+            <span className="text-sm font-medium text-gray-700">
+              Category is active
+            </span>
+          </label>
+
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"

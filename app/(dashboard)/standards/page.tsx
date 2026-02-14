@@ -1,7 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
   Loader2,
@@ -12,7 +17,13 @@ import {
   X,
   Target,
   Activity,
+  ArrowDownAZ,
+  ArrowUpAZ,
 } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 
 interface Nutrient {
   min: number;
@@ -22,8 +33,10 @@ interface Nutrient {
 interface FeedStandard {
   _id: string;
   name: string;
+  feedType?: 'fish' | 'poultry';
   feedCategory: 'Catfish' | 'Poultry';
   poultryType?: 'Broiler' | 'Layer';
+  fishSubtype?: string;
   stage: string;
   description?: string;
   targetNutrients: {
@@ -43,11 +56,21 @@ interface FeedStandard {
   createdAt: string;
 }
 
+type SortKey = 'name' | 'feedType' | 'stage' | 'protein' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export default function StandardsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [fishTypeFilter, setFishTypeFilter] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [feedTypeFilter, setFeedTypeFilter] = useState('');
   const [stageFilter, setStageFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStandard, setEditingStandard] = useState<FeedStandard | null>(
     null,
@@ -55,32 +78,27 @@ export default function StandardsPage() {
   const [viewingStandard, setViewingStandard] = useState<FeedStandard | null>(
     null,
   );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['standards', search, fishTypeFilter, stageFilter],
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['admin-standards', debouncedSearch, feedTypeFilter, stageFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (fishTypeFilter) params.append('fishType', fishTypeFilter);
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (feedTypeFilter) params.append('feedType', feedTypeFilter);
       if (stageFilter) params.append('stage', stageFilter);
-      const { data } = await api.get(`/standards?${params.toString()}`);
+      const { data } = await api.get(`/admin/standards?${params.toString()}`);
       return data.standards as FeedStandard[];
     },
-  });
-
-  // Fetch fish types from categories
-  const { data: fishTypes } = useQuery({
-    queryKey: ['categories', 'fish_type'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/categories?type=fish_type');
-      return data.categories as { name: string; displayName: string }[];
-    },
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<FeedStandard>) =>
       api.post('/admin/standards', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['standards'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-standards'] });
       setIsModalOpen(false);
     },
   });
@@ -89,7 +107,7 @@ export default function StandardsPage() {
     mutationFn: ({ id, data }: { id: string; data: Partial<FeedStandard> }) =>
       api.put(`/admin/standards/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['standards'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-standards'] });
       setIsModalOpen(false);
       setEditingStandard(null);
     },
@@ -97,23 +115,131 @@ export default function StandardsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/standards/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['standards'] }),
+    onSuccess: (_response, id) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-standards'] });
+      setDeletingId(null);
+      if (viewingStandard?._id === id) {
+        setViewingStandard(null);
+      }
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => api.delete(`/admin/standards/${id}`))),
+    onSuccess: (_response, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-standards'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleting(false);
+      if (viewingStandard && ids.includes(viewingStandard._id)) {
+        setViewingStandard(null);
+      }
+    },
+  });
+
+  const filteredData = useMemo(() => {
+    const base = data || [];
+    const filtered = base.filter((standard) => {
+      const matchesSearch =
+        !search || standard.name.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = !statusFilter
+        ? true
+        : statusFilter === 'active'
+          ? standard.isActive
+          : !standard.isActive;
+      return matchesSearch && matchesStatus;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      const aFeedType =
+        (a.feedType || '').toLowerCase() === 'poultry' ||
+        a.feedCategory === 'Poultry'
+          ? 'poultry'
+          : 'fish';
+      const bFeedType =
+        (b.feedType || '').toLowerCase() === 'poultry' ||
+        b.feedCategory === 'Poultry'
+          ? 'poultry'
+          : 'fish';
+
+      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
+      if (sortKey === 'feedType') return aFeedType.localeCompare(bFeedType) * dir;
+      if (sortKey === 'stage') return a.stage.localeCompare(b.stage) * dir;
+      if (sortKey === 'protein') {
+        return (
+          ((a.targetNutrients?.protein?.min || 0) -
+            (b.targetNutrients?.protein?.min || 0)) * dir
+        );
+      }
+      return (Number(a.isActive) - Number(b.isActive)) * dir;
+    });
+
+    return sorted;
+  }, [data, search, statusFilter, sortDirection, sortKey]);
+
+  const totalItems = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+
+  const visibleSelectedCount = useMemo(
+    () =>
+      paginatedData.reduce(
+        (count, standard) => count + (selectedIds.has(standard._id) ? 1 : 0),
+        0,
+      ),
+    [paginatedData, selectedIds],
+  );
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (paginatedData.length === 0) return;
+    if (visibleSelectedCount === paginatedData.length) {
+      const next = new Set(selectedIds);
+      paginatedData.forEach((standard) => next.delete(standard._id));
+      setSelectedIds(next);
+      return;
+    }
+    const next = new Set(selectedIds);
+    paginatedData.forEach((standard) => next.add(standard._id));
+    setSelectedIds(next);
+  };
 
   // Stats
   const stats = {
     total: data?.length || 0,
-    catfish: data?.filter((s) => s.feedCategory === 'Catfish').length || 0,
+    fish:
+      data?.filter(
+        (s) => (s.feedType || '').toLowerCase() === 'fish' || s.feedCategory === 'Catfish',
+      ).length || 0,
     poultry: data?.filter((s) => s.feedCategory === 'Poultry').length || 0,
     active: data?.filter((s) => s.isActive).length || 0,
   };
 
-  // Filter by search
-  const filteredData = data?.filter(
-    (s) => !search || s.name.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -156,8 +282,8 @@ export default function StandardsPage() {
             <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
-            <p className="text-sm text-gray-500">Catfish</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.catfish}</p>
+            <p className="text-sm text-gray-500">Fish</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.fish}</p>
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
             <p className="text-sm text-gray-500">Poultry</p>
@@ -179,27 +305,33 @@ export default function StandardsPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="Search standards..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
             />
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <select
-              value={fishTypeFilter}
-              onChange={(e) => setFishTypeFilter(e.target.value)}
+              value={feedTypeFilter}
+              onChange={(e) => {
+                setFeedTypeFilter(e.target.value);
+                setPage(1);
+              }}
               className="flex-1 sm:w-[160px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
-              <option value="">All Fish Types</option>
-              {fishTypes?.map((ft) => (
-                <option key={ft.name} value={ft.name}>
-                  {ft.displayName}
-                </option>
-              ))}
+              <option value="">All Feed Types</option>
+              <option value="fish">Fish</option>
+              <option value="poultry">Poultry</option>
             </select>
             <select
               value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
+              onChange={(e) => {
+                setStageFilter(e.target.value);
+                setPage(1);
+              }}
               className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Stages</option>
@@ -208,25 +340,110 @@ export default function StandardsPage() {
               <option value="Grower">Grower</option>
               <option value="Finisher">Finisher</option>
             </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+            >
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select
+              value={`${sortKey}:${sortDirection}`}
+              onChange={(e) => {
+                const [key, direction] = e.target.value.split(':') as [
+                  SortKey,
+                  SortDirection,
+                ];
+                setSortKey(key);
+                setSortDirection(direction);
+              }}
+              className="flex-1 sm:w-[180px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+            >
+              <option value="name:asc">Name (A-Z)</option>
+              <option value="name:desc">Name (Z-A)</option>
+              <option value="stage:asc">Stage (A-Z)</option>
+              <option value="protein:desc">Protein Min (High-Low)</option>
+            </select>
           </div>
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity ${
+            isPlaceholderData ? 'opacity-60' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Fish Type</th>
-                  <th className="px-6 py-4">Stage</th>
-                  <th className="px-6 py-4">Protein Range</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 w-12">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      checked={
+                        paginatedData.length > 0 &&
+                        visibleSelectedCount === paginatedData.length
+                      }
+                      onChange={handleSelectAll}
+                    />
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('name')}
+                    >
+                      Name
+                      {sortKey === 'name' && sortDirection === 'asc' ? (
+                        <ArrowDownAZ size={14} />
+                      ) : null}
+                      {sortKey === 'name' && sortDirection === 'desc' ? (
+                        <ArrowUpAZ size={14} />
+                      ) : null}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('feedType')}
+                    >
+                      Feed Type
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('stage')}
+                    >
+                      Stage
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('protein')}
+                    >
+                      Protein Range
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('status')}
+                    >
+                      Status
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredData?.map((standard) => (
+                {paginatedData.map((standard) => (
                   <tr
                     key={standard._id}
                     className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
@@ -236,6 +453,17 @@ export default function StandardsPage() {
                     }`}
                     onClick={() => setViewingStandard(standard)}
                   >
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={selectedIds.has(standard._id)}
+                        onChange={() => handleSelectOne(standard._id)}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 text-primary rounded-lg">
@@ -255,10 +483,10 @@ export default function StandardsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700">
-                        {standard.feedCategory}{' '}
-                        {standard.poultryType
-                          ? `(${standard.poultryType})`
-                          : ''}
+                        {(standard.feedType || '').toLowerCase() === 'poultry' ||
+                        standard.feedCategory === 'Poultry'
+                          ? `Poultry${standard.poultryType ? ` (${standard.poultryType})` : ''}`
+                          : `Fish${standard.fishSubtype ? ` (${standard.fishSubtype})` : ''}`}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -297,10 +525,7 @@ export default function StandardsPage() {
                           <Edit2 size={16} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm('Delete this standard?'))
-                              deleteMutation.mutate(standard._id);
-                          }}
+                          onClick={() => setDeletingId(standard._id)}
                           className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600"
                         >
                           <Trash2 size={16} />
@@ -309,6 +534,16 @@ export default function StandardsPage() {
                     </td>
                   </tr>
                 ))}
+                {paginatedData.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-6 py-10 text-center text-sm text-gray-500"
+                    >
+                      No standards found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -316,7 +551,7 @@ export default function StandardsPage() {
 
         {/* Mobile Card View */}
         <div className="sm:hidden space-y-4">
-          {filteredData?.map((standard: FeedStandard) => (
+          {paginatedData.map((standard: FeedStandard) => (
             <div
               key={standard._id}
               onClick={() => setViewingStandard(standard)}
@@ -357,8 +592,10 @@ export default function StandardsPage() {
 
               <div className="flex flex-wrap gap-2 mb-3">
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-bold uppercase">
-                  {standard.feedCategory}{' '}
-                  {standard.poultryType ? `(${standard.poultryType})` : ''}
+                  {(standard.feedType || '').toLowerCase() === 'poultry' ||
+                  standard.feedCategory === 'Poultry'
+                    ? `Poultry${standard.poultryType ? ` (${standard.poultryType})` : ''}`
+                    : `Fish${standard.fishSubtype ? ` (${standard.fishSubtype})` : ''}`}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-gray-700 text-[10px] font-bold uppercase">
                   <Activity size={10} />
@@ -390,10 +627,7 @@ export default function StandardsPage() {
                     <Edit2 size={16} />
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm('Delete this standard?'))
-                        deleteMutation.mutate(standard._id);
-                    }}
+                    onClick={() => setDeletingId(standard._id)}
                     className="p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600"
                   >
                     <Trash2 size={16} />
@@ -402,12 +636,25 @@ export default function StandardsPage() {
               </div>
             </div>
           ))}
-          {filteredData?.length === 0 && (
+          {paginatedData.length === 0 && (
             <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
               <p className="text-gray-500 text-sm">No standards found</p>
             </div>
           )}
         </div>
+
+        <PaginationBar
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          itemLabel="standards"
+        />
       </div>
 
       {/* Details Side Panel */}
@@ -440,6 +687,39 @@ export default function StandardsPage() {
           isLoading={createMutation.isPending || updateMutation.isPending}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
+        isLoading={deleteMutation.isPending}
+        title="Delete Standard"
+        message="Are you sure you want to delete this standard? This action cannot be undone."
+        confirmText="Delete Standard"
+      />
+
+      {/* Bulk Toolbar + Modal */}
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Delete Selected',
+            onClick: () => setIsBulkDeleting(true),
+            variant: 'danger',
+          },
+        ]}
+      />
+      <ConfirmModal
+        isOpen={isBulkDeleting}
+        onClose={() => setIsBulkDeleting(false)}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        isLoading={bulkDeleteMutation.isPending}
+        title={`Delete ${selectedIds.size} Standards?`}
+        message="This will permanently remove all selected standards."
+        confirmText="Delete All"
+      />
     </div>
   );
 }
@@ -461,8 +741,10 @@ function StandardDetailDrawer({
           </h2>
           <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
             <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold uppercase tracking-wider">
-              {standard.feedCategory}{' '}
-              {standard.poultryType ? `- ${standard.poultryType}` : ''}
+              {(standard.feedType || '').toLowerCase() === 'poultry' ||
+              standard.feedCategory === 'Poultry'
+                ? `Poultry${standard.poultryType ? ` - ${standard.poultryType}` : ''}`
+                : `Fish${standard.fishSubtype ? ` - ${standard.fishSubtype}` : ''}`}
             </span>
             <span className="text-gray-300">/</span>
             <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -668,7 +950,7 @@ function StandardModal({
                 }
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               >
-                <option value="Catfish">Catfish</option>
+                <option value="Catfish">Fish</option>
                 <option value="Poultry">Poultry</option>
               </select>
             </div>

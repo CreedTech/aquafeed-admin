@@ -15,7 +15,7 @@ import {
 
 interface ConfigItem {
   key: string;
-  value: number | string;
+  value: number | string | boolean;
   description: string;
   category: 'FINANCIAL' | 'SCIENTIFIC' | 'SOLVER' | 'SYSTEM';
 }
@@ -35,7 +35,7 @@ export default function SettingsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { key: string; value: number | string }) =>
+    mutationFn: (data: { key: string; value: number | string | boolean }) =>
       api.put(`/admin/configurations/${data.key}`, { value: data.value }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['configurations'] });
@@ -154,10 +154,12 @@ function ConfigCard({
   isUpdating,
 }: {
   config: ConfigItem;
-  onUpdate: (val: number | string) => void;
+  onUpdate: (val: number | string | boolean) => void;
   isUpdating: boolean;
 }) {
   const [localValue, setLocalValue] = useState(config.value);
+  const isBoolean = typeof config.value === 'boolean';
+  const isNumber = typeof config.value === 'number';
 
   const keyLabels: Record<string, string> = {
     energy_protein_mult: 'Energy Multiplier (Protein)',
@@ -170,8 +172,12 @@ function ConfigCard({
     currency_exchange_usd: 'Exchange Rate (USD to NGN)',
     currency_exchange_ghs: 'Exchange Rate (GHS to NGN)',
     preferred_ingredient_penalty: 'Maize Dominance Penalty (%)',
-    min_animal_protein_pct: 'Min Animal Protein (Catfish)',
+    min_animal_protein_percent: 'Min Animal Protein (Fish)',
+    min_animal_protein_pct: 'Min Animal Protein (Fish, legacy)',
     blood_meal_max_ratio: 'Blood Meal Max Ratio (%)',
+    suggestion_allow_relaxations: 'Allow One-Tap Relaxations',
+    suggestion_max_relaxation_step_pct: 'Max Relaxation Step (%)',
+    suggestion_rank_strategy: 'Suggestion Ranking Strategy',
   };
 
   return (
@@ -190,13 +196,26 @@ function ConfigCard({
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <input
-            type="number"
-            step="0.0001"
-            value={localValue}
-            onChange={(e) => setLocalValue(Number(e.target.value))}
-            className="w-full px-4 py-2 bg-gray-50 rounded-lg border border-gray-100 text-sm font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-          />
+          {isBoolean ? (
+            <select
+              value={String(localValue)}
+              onChange={(e) => setLocalValue(e.target.value === 'true')}
+              className="w-full px-4 py-2 bg-gray-50 rounded-lg border border-gray-100 text-sm font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            >
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          ) : (
+            <input
+              type={isNumber ? 'number' : 'text'}
+              step={isNumber ? '0.0001' : undefined}
+              value={String(localValue)}
+              onChange={(e) =>
+                setLocalValue(isNumber ? Number(e.target.value) : e.target.value)
+              }
+              className="w-full px-4 py-2 bg-gray-50 rounded-lg border border-gray-100 text-sm font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          )}
         </div>
         <button
           onClick={() => onUpdate(localValue)}

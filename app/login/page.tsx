@@ -12,6 +12,7 @@ export default function LoginPage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const checkAuth = useAuthStore((s) => s.checkAuth);
+  const login = useAuthStore((s) => s.login);
   const hasChecked = useRef(false);
 
   const [step, setStep] = useState<'email' | 'otp'>('email');
@@ -61,20 +62,12 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Invalid OTP');
-      if (data.user.role !== 'admin') {
-        setError('Access denied. Admin account required.');
-        setIsLoading(false);
-        return;
+      const result = await login(email, otp);
+      if (!result.success) {
+        setError(result.error || 'Invalid OTP');
+      } else {
+        router.replace('/');
       }
-      await checkAuth();
-      router.replace('/');
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Invalid OTP');
