@@ -14,6 +14,7 @@ import {
   Target,
   Tags,
   Fish,
+  ArrowRightLeft,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ const sidebarItems = [
   { icon: Tags, label: 'Categories', href: '/categories' },
   { icon: Database, label: 'Ingredients', href: '/ingredients' },
   { icon: Target, label: 'Standards', href: '/standards' },
+  { icon: ArrowRightLeft, label: 'Alternatives', href: '/alternatives' },
   { icon: LayoutDashboard, label: 'Templates', href: '/templates' },
   { icon: FlaskConical, label: 'Formulations', href: '/formulations' },
   { icon: Fish, label: 'Farms', href: '/farms' },
