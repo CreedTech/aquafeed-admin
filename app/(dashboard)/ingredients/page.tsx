@@ -17,12 +17,15 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 interface Nutrient {
   protein: number;
   fat: number;
+  carbohydrate: number;
+  energy: number;
   fiber: number;
   ash: number;
   lysine: number;
   methionine: number;
   calcium: number;
   phosphorous: number;
+  phosphorusBioavailability: number;
 }
 
 interface Ingredient {
@@ -31,12 +34,13 @@ interface Ingredient {
   category: string;
   defaultPrice: number;
   bagWeight: number | null;
-  specificGravity: number | null; // For liquids like Palm Oil (0.91)
-  isAutoCalculated: boolean; // True for Vitamin C
-  autoCalcRatio: number | null; // e.g., 0.0004 for 400mg/kg
+  specificGravity: number | null;
+  isAutoCalculated: boolean;
+  autoCalcRatio: number | null;
   isActive: boolean;
   nutrients: Nutrient;
   constraints: { max_inclusion?: number; min_inclusion?: number };
+  tags: string[];
 }
 
 const CATEGORIES = ['CARBOHYDRATE', 'PROTEIN', 'FIBER', 'MINERALS', 'OTHER'];
@@ -47,10 +51,10 @@ export default function IngredientsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(
-    null
+    null,
   );
   const [viewingIngredient, setViewingIngredient] = useState<Ingredient | null>(
-    null
+    null,
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -222,9 +226,23 @@ export default function IngredientsPage() {
                         <div className="p-2 bg-primary/10 text-primary rounded-lg">
                           <Database size={16} />
                         </div>
-                        <span className="font-medium text-gray-900">
-                          {ingredient.name}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="font-medium text-gray-900 block truncate">
+                            {ingredient.name}
+                          </span>
+                          {ingredient.tags && ingredient.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {ingredient.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="text-[9px] px-1 bg-gray-100 text-gray-400 rounded uppercase font-bold"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -632,14 +650,18 @@ function IngredientModal({
     nutrients: ingredient?.nutrients || {
       protein: 0,
       fat: 0,
+      carbohydrate: 0,
+      energy: 0,
       fiber: 0,
       ash: 0,
       lysine: 0,
       methionine: 0,
       calcium: 0,
       phosphorous: 0,
+      phosphorusBioavailability: 1.0,
     },
     constraints: ingredient?.constraints || {},
+    tags: ingredient?.tags || [],
   });
 
   return (
@@ -724,73 +746,58 @@ function IngredientModal({
             </div>
           </div>
 
-          {/* Special Properties */}
+          {/* Tags & Phosphorus Bioavailability */}
           <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">
-              Special Properties
+              Scientific Markers & Tags
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Specific Gravity
+                  Phosphorus Bioavailability (0.0 - 1.0)
                 </label>
                 <input
                   type="number"
                   step="0.01"
-                  value={form.specificGravity || ''}
-                  placeholder="e.g., 0.91 for Palm Oil"
+                  min="0"
+                  max="1"
+                  value={form.nutrients.phosphorusBioavailability}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      specificGravity: e.target.value
-                        ? Number(e.target.value)
-                        : null,
+                      nutrients: {
+                        ...form.nutrients,
+                        phosphorusBioavailability: Number(e.target.value),
+                      },
                     })
                   }
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  For liquids (liters→kg)
-                </p>
-              </div>
-              <div className="flex flex-col justify-center">
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1.5">
-                  <input
-                    type="checkbox"
-                    checked={form.isAutoCalculated}
-                    onChange={(e) =>
-                      setForm({ ...form, isAutoCalculated: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  Auto-Calculated
-                </label>
-                <p className="text-xs text-gray-500 ml-6">
-                  Quantity computed automatically
+                  Plant sources: 0.3 | Animal/DCP: 1.0
                 </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Auto-Calc Ratio
+                  Tags (Comma separated)
                 </label>
                 <input
-                  type="number"
-                  step="0.0001"
-                  value={form.autoCalcRatio || ''}
-                  placeholder="e.g., 0.0004 for 400mg/kg"
-                  disabled={!form.isAutoCalculated}
+                  type="text"
+                  value={form.tags.join(', ')}
+                  placeholder="ANIMAL_PROTEIN, DCP, etc."
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      autoCalcRatio: e.target.value
-                        ? Number(e.target.value)
-                        : null,
+                      tags: e.target.value
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean),
                     })
                   }
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Qty = BatchWeight × Ratio
+                  Used for grouped constraints (e.g., ANIMAL_PROTEIN)
                 </p>
               </div>
             </div>
@@ -801,28 +808,30 @@ function IngredientModal({
               Nutrient Composition (%)
             </h3>
             <div className="grid grid-cols-2 xs:grid-cols-4 gap-3">
-              {Object.entries(form.nutrients).map(([key, value]) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-gray-500 mb-1 capitalize">
-                    {key}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={value}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        nutrients: {
-                          ...form.nutrients,
-                          [key]: Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-                  />
-                </div>
-              ))}
+              {Object.entries(form.nutrients)
+                .filter(([key]) => key !== 'phosphorusBioavailability')
+                .map(([key, value]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-gray-500 mb-1 capitalize">
+                      {key}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={value}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          nutrients: {
+                            ...form.nutrients,
+                            [key]: Number(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                    />
+                  </div>
+                ))}
             </div>
           </div>
           <div className="flex items-center gap-3">
