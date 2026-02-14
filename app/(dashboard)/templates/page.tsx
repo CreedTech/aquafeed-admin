@@ -1,9 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
+  ArrowDownAZ,
+  ArrowUpAZ,
   Loader2,
   Plus,
   Search,
@@ -14,6 +21,10 @@ import {
   Save,
   Activity,
 } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 
 // --- Types ---
 
@@ -47,12 +58,24 @@ interface Category {
   type: string;
 }
 
+type SortKey = 'name' | 'feedCategory' | 'stage' | 'items' | 'status';
+type SortDirection = 'asc' | 'desc';
+const feedCategoryLabel = (value: FeedTemplate['feedCategory']) =>
+  value === 'Catfish' ? 'Fish' : 'Poultry';
+
 // --- Main Page ---
 
 export default function TemplatesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<FeedTemplate | null>(
     null,
@@ -60,14 +83,21 @@ export default function TemplatesPage() {
   const [viewingTemplate, setViewingTemplate] = useState<FeedTemplate | null>(
     null,
   );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // Queries
-  const { data: templates, isLoading: isTemplatesLoading } = useQuery({
-    queryKey: ['templates', search, categoryFilter],
+  const {
+    data: templates,
+    isLoading: isTemplatesLoading,
+    isPlaceholderData,
+  } = useQuery({
+    queryKey: ['templates'],
     queryFn: async () => {
       const { data } = await api.get('/admin/templates');
       return data.templates as FeedTemplate[];
     },
+    placeholderData: keepPreviousData,
   });
 
   const { data: ingredients } = useQuery({
@@ -124,9 +154,29 @@ export default function TemplatesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/templates/${id}`),
-    onSuccess: () => {
+    onSuccess: (_response, id) => {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       if (viewingTemplate?._id === id) setViewingTemplate(null);
+      setDeletingId(null);
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => api.delete(`/admin/templates/${id}`))),
+    onSuccess: (_response, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      setIsBulkDeleting(false);
+      setSelectedIds(new Set());
+      if (viewingTemplate && ids.includes(viewingTemplate._id)) {
+        setViewingTemplate(null);
+      }
     },
   });
 
@@ -137,23 +187,100 @@ export default function TemplatesPage() {
   };
 
   // Filtering
-  const filteredTemplates = templates?.filter((t) => {
-    const matchesSearch =
-      !search || t.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory =
-      !categoryFilter || t.feedCategory === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredTemplates = useMemo(() => {
+    const base = templates || [];
+    const filtered = base.filter((template) => {
+      const matchesSearch =
+        !debouncedSearch ||
+        template.name.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const matchesCategory =
+        !categoryFilter || template.feedCategory === categoryFilter;
+      const matchesStatus = !statusFilter
+        ? true
+        : statusFilter === 'active'
+          ? template.isActive
+          : !template.isActive;
+
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
+      if (sortKey === 'feedCategory')
+        return a.feedCategory.localeCompare(b.feedCategory) * dir;
+      if (sortKey === 'stage') return a.stage.localeCompare(b.stage) * dir;
+      if (sortKey === 'items')
+        return ((a.items?.length || 0) - (b.items?.length || 0)) * dir;
+      return (Number(a.isActive) - Number(b.isActive)) * dir;
+    });
+
+    return sorted;
+  }, [
+    templates,
+    debouncedSearch,
+    categoryFilter,
+    statusFilter,
+    sortDirection,
+    sortKey,
+  ]);
+
+  const totalItems = filteredTemplates.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedTemplates = filteredTemplates.slice(
+    startIndex,
+    startIndex + pageSize
+  );
+
+  const visibleSelectedCount = useMemo(
+    () =>
+      paginatedTemplates.reduce(
+        (count, template) => count + (selectedIds.has(template._id) ? 1 : 0),
+        0,
+      ),
+    [paginatedTemplates, selectedIds],
+  );
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (paginatedTemplates.length === 0) return;
+    if (visibleSelectedCount === paginatedTemplates.length) {
+      const next = new Set(selectedIds);
+      paginatedTemplates.forEach((template) => next.delete(template._id));
+      setSelectedIds(next);
+      return;
+    }
+    const next = new Set(selectedIds);
+    paginatedTemplates.forEach((template) => next.add(template._id));
+    setSelectedIds(next);
+  };
 
   // Stats
   const stats = {
     total: templates?.length || 0,
-    catfish: templates?.filter((t) => t.feedCategory === 'Catfish').length || 0,
+    fish: templates?.filter((t) => t.feedCategory === 'Catfish').length || 0,
     poultry: templates?.filter((t) => t.feedCategory === 'Poultry').length || 0,
     active: templates?.filter((t) => t.isActive).length || 0,
   };
 
-  if (isTemplatesLoading) {
+  if (isTemplatesLoading && !templates) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -197,9 +324,9 @@ export default function TemplatesPage() {
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
-              Catfish
+              Fish
             </p>
-            <p className="text-2xl font-bold text-gray-900">{stats.catfish}</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.fish}</p>
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
@@ -225,45 +352,148 @@ export default function TemplatesPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="Search templates..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all"
             />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="flex-1 sm:w-40 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">All Categories</option>
-              <option value="Catfish">Catfish</option>
-              <option value="Poultry">Poultry</option>
-            </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-auto px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">All Categories</option>
+            <option value="Catfish">Fish</option>
+            <option value="Poultry">Poultry</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-auto px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+          </select>
+          <select
+            value={`${sortKey}:${sortDirection}`}
+            onChange={(e) => {
+              const [key, direction] = e.target.value.split(':') as [
+                SortKey,
+                SortDirection,
+              ];
+              setSortKey(key);
+              setSortDirection(direction);
+            }}
+            className="w-full sm:w-auto px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="name:asc">Name (A-Z)</option>
+            <option value="name:desc">Name (Z-A)</option>
+            <option value="stage:asc">Stage (A-Z)</option>
+            <option value="items:desc">Components (High-Low)</option>
+          </select>
+          <div className="text-sm text-gray-500">
+            {filteredTemplates.length} templates
           </div>
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm transition-opacity ${
+            isPlaceholderData ? 'opacity-60' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left min-w-[860px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Stage</th>
-                  <th className="px-6 py-4">Ingredients</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 w-12">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      checked={
+                        paginatedTemplates.length > 0 &&
+                        visibleSelectedCount === paginatedTemplates.length
+                      }
+                      onChange={handleSelectAll}
+                    />
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('name')}
+                    >
+                      Name
+                      {sortKey === 'name' && sortDirection === 'asc' ? (
+                        <ArrowDownAZ size={14} />
+                      ) : null}
+                      {sortKey === 'name' && sortDirection === 'desc' ? (
+                        <ArrowUpAZ size={14} />
+                      ) : null}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('feedCategory')}
+                    >
+                      Category
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('stage')}
+                    >
+                      Stage
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('items')}
+                    >
+                      Ingredients
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('status')}
+                    >
+                      Status
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredTemplates?.map((template) => (
+                {paginatedTemplates.map((template) => (
                   <tr
                     key={template._id}
                     className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${viewingTemplate?._id === template._id ? 'bg-primary/5' : ''}`}
                     onClick={() => setViewingTemplate(template)}
                   >
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={selectedIds.has(template._id)}
+                        onChange={() => handleSelectOne(template._id)}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
@@ -282,7 +512,7 @@ export default function TemplatesPage() {
                             : 'bg-blue-50 text-blue-700'
                         }`}
                       >
-                        {template.feedCategory}{' '}
+                        {feedCategoryLabel(template.feedCategory)}{' '}
                         {template.poultryType
                           ? `(${template.poultryType})`
                           : ''}
@@ -320,10 +550,7 @@ export default function TemplatesPage() {
                           <Edit2 size={16} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm('Delete this template?'))
-                              deleteMutation.mutate(template._id);
-                          }}
+                          onClick={() => setDeletingId(template._id)}
                           className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
                         >
                           <Trash2 size={16} />
@@ -332,6 +559,16 @@ export default function TemplatesPage() {
                     </td>
                   </tr>
                 ))}
+                {paginatedTemplates.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-6 py-10 text-center text-sm text-gray-500"
+                    >
+                      No templates found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -339,7 +576,7 @@ export default function TemplatesPage() {
 
         {/* Mobile View */}
         <div className="sm:hidden space-y-4">
-          {filteredTemplates?.map((template) => (
+          {paginatedTemplates.map((template) => (
             <div
               key={template._id}
               onClick={() => setViewingTemplate(template)}
@@ -379,15 +616,50 @@ export default function TemplatesPage() {
                       : 'bg-blue-50 text-blue-700'
                   }`}
                 >
-                  {template.feedCategory}
+                  {feedCategoryLabel(template.feedCategory)}
                 </span>
                 <span className="px-2 py-1 rounded bg-gray-100 text-gray-600 text-[10px] font-black uppercase">
                   {template.items?.length || 0} items
                 </span>
               </div>
+              <div
+                className="flex justify-end gap-1 mt-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => handleEdit(template)}
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  onClick={() => setDeletingId(template._id)}
+                  className="p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           ))}
+          {paginatedTemplates.length === 0 && (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+              <p className="text-gray-500 text-sm">No templates found</p>
+            </div>
+          )}
         </div>
+
+        <PaginationBar
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          itemLabel="templates"
+        />
       </div>
 
       {/* Details Side Drawer */}
@@ -425,6 +697,37 @@ export default function TemplatesPage() {
           isLoading={createMutation.isPending || updateMutation.isPending}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        onConfirm={() => deletingId && deleteMutation.mutate(deletingId)}
+        isLoading={deleteMutation.isPending}
+        title="Delete Template"
+        message="Are you sure you want to delete this template? This action cannot be undone."
+        confirmText="Delete Template"
+      />
+
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Delete Selected',
+            onClick: () => setIsBulkDeleting(true),
+            variant: 'danger',
+          },
+        ]}
+      />
+      <ConfirmModal
+        isOpen={isBulkDeleting}
+        onClose={() => setIsBulkDeleting(false)}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        isLoading={bulkDeleteMutation.isPending}
+        title={`Delete ${selectedIds.size} Templates?`}
+        message="This will permanently remove all selected templates."
+        confirmText="Delete All"
+      />
     </div>
   );
 }
@@ -448,7 +751,9 @@ function TemplateDetailDrawer({
             {template.name}
           </h2>
           <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 mt-1">
-            <span className="text-primary">{template.feedCategory}</span>
+            <span className="text-primary">
+              {feedCategoryLabel(template.feedCategory)}
+            </span>
             <span>/</span>
             <span>{template.stage}</span>
           </div>
@@ -634,7 +939,7 @@ function TemplateModal({
                   ))
                 ) : (
                   <>
-                    <option value="Catfish">Catfish</option>
+                    <option value="Catfish">Fish</option>
                     <option value="Poultry">Poultry</option>
                   </>
                 )}

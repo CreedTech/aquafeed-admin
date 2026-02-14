@@ -1,7 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
   Loader2,
@@ -11,8 +16,13 @@ import {
   Trash2,
   X,
   Database,
+  ArrowDownAZ,
+  ArrowUpAZ,
 } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { useDebounce } from '@/hooks/useDebounce';
+import { BulkActionToolbar } from '@/components/BulkActionToolbar';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 
 interface Nutrient {
   protein: number;
@@ -43,12 +53,25 @@ interface Ingredient {
   tags: string[];
 }
 
-const CATEGORIES = ['CARBOHYDRATE', 'PROTEIN', 'FIBER', 'MINERALS', 'OTHER'];
+interface IngredientCategory {
+  name: string;
+  displayName: string;
+}
+
+type SortKey = 'name' | 'category' | 'price' | 'protein' | 'status';
+type SortDirection = 'asc' | 'desc';
 
 export default function IngredientsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(
     null,
@@ -57,16 +80,26 @@ export default function IngredientsPage() {
     null,
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['ingredients', search, categoryFilter],
+  const { data: ingredientCategories = [] } = useQuery({
+    queryKey: ['ingredient-categories'],
+    queryFn: async () => {
+      const { data } = await api.get('/ingredients/categories?type=ingredient');
+      return (data.categories as IngredientCategory[]) || [];
+    },
+  });
+
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['ingredients', debouncedSearch, categoryFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (categoryFilter) params.append('category', categoryFilter);
       const { data } = await api.get(`/ingredients?${params.toString()}`);
       return data.ingredients as Ingredient[];
     },
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
@@ -90,23 +123,128 @@ export default function IngredientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/ingredients/${id}`),
-    onSuccess: () => {
+    onSuccess: (_response, id) => {
       queryClient.invalidateQueries({ queryKey: ['ingredients'] });
       setDeletingId(null);
-      if (viewingIngredient?._id === deletingId) {
+      if (viewingIngredient?._id === id) {
+        setViewingIngredient(null);
+      }
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => api.delete(`/admin/ingredients/${id}`))),
+    onSuccess: (_response, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleting(false);
+      if (viewingIngredient && ids.includes(viewingIngredient._id)) {
         setViewingIngredient(null);
       }
     },
   });
 
+  const filteredData = useMemo(() => {
+    const base = data || [];
+    const byStatus = base.filter((ingredient) => {
+      if (!statusFilter) return true;
+      return statusFilter === 'active'
+        ? ingredient.isActive
+        : !ingredient.isActive;
+    });
+
+    const sorted = [...byStatus].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
+      if (sortKey === 'category')
+        return a.category.localeCompare(b.category) * dir;
+      if (sortKey === 'price')
+        return (a.defaultPrice - b.defaultPrice) * dir;
+      if (sortKey === 'protein')
+        return ((a.nutrients?.protein || 0) - (b.nutrients?.protein || 0)) * dir;
+      return (Number(a.isActive) - Number(b.isActive)) * dir;
+    });
+
+    return sorted;
+  }, [data, statusFilter, sortKey, sortDirection]);
+
+  const totalItems = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const visibleSelectedCount = useMemo(
+    () =>
+      paginatedData.reduce(
+        (count, ingredient) => count + (selectedIds.has(ingredient._id) ? 1 : 0),
+        0,
+      ),
+    [paginatedData, selectedIds],
+  );
+
+  const handleSelectAll = () => {
+    if (paginatedData.length === 0) return;
+    if (visibleSelectedCount === paginatedData.length) {
+      const next = new Set(selectedIds);
+      paginatedData.forEach((ingredient) => next.delete(ingredient._id));
+      setSelectedIds(next);
+      return;
+    }
+    const next = new Set(selectedIds);
+    paginatedData.forEach((ingredient) => next.add(ingredient._id));
+    setSelectedIds(next);
+  };
+
+  const categoryOptions = useMemo(() => {
+    if (ingredientCategories.length > 0) {
+      return ingredientCategories.map((category) => ({
+        value: category.name,
+        label: category.displayName || category.name,
+      }));
+    }
+
+    const discovered = Array.from(
+      new Set((data || []).map((ingredient) => ingredient.category).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return discovered.map((category) => ({ value: category, label: category }));
+  }, [ingredientCategories, data]);
+
   // Group by category for stats
-  const categoryStats = CATEGORIES.map((cat) => ({
-    name: cat,
-    count: data?.filter((i) => i.category === cat).length || 0,
-    active: data?.filter((i) => i.category === cat && i.isActive).length || 0,
+  const categoryStats = categoryOptions.map((category) => ({
+    value: category.value,
+    label: category.label,
+    count: filteredData.filter((i) => i.category === category.value).length || 0,
+    active:
+      filteredData.filter((i) => i.category === category.value && i.isActive)
+        .length || 0,
   }));
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -146,17 +284,21 @@ export default function IngredientsPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {categoryStats.map((cat) => (
             <button
-              key={cat.name}
+              key={cat.value}
               onClick={() =>
-                setCategoryFilter(categoryFilter === cat.name ? '' : cat.name)
+                setCategoryFilter((prev) => {
+                  const next = prev === cat.value ? '' : cat.value;
+                  setPage(1);
+                  return next;
+                })
               }
               className={`p-4 rounded-xl border text-left transition-all ${
-                categoryFilter === cat.name
+                categoryFilter === cat.value
                   ? 'border-primary bg-primary/5'
                   : 'border-gray-200 bg-white hover:border-primary/30'
               }`}
             >
-              <p className="text-xs text-gray-500">{cat.name}</p>
+              <p className="text-xs text-gray-500">{cat.label}</p>
               <p className="text-xl font-bold text-gray-900">{cat.count}</p>
               <p className="text-xs text-gray-400">{cat.active} active</p>
             </button>
@@ -173,45 +315,137 @@ export default function IngredientsPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="Search ingredients..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
             />
           </div>
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setPage(1);
+            }}
             className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
           >
             <option value="">All Categories</option>
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
+            {categoryOptions.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
               </option>
             ))}
           </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+          >
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
+          <select
+            value={`${sortKey}:${sortDirection}`}
+            onChange={(e) => {
+              const [key, direction] = e.target.value.split(':') as [
+                SortKey,
+                SortDirection,
+              ];
+              setSortKey(key);
+              setSortDirection(direction);
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+          >
+            <option value="name:asc">Name (A-Z)</option>
+            <option value="name:desc">Name (Z-A)</option>
+            <option value="price:asc">Price (Low-High)</option>
+            <option value="price:desc">Price (High-Low)</option>
+            <option value="protein:desc">Protein (High-Low)</option>
+          </select>
           <div className="text-sm text-gray-500">
-            {data?.length || 0} ingredients
+            {filteredData.length} ingredients
           </div>
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div
+          className={`hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden transition-opacity ${
+            isPlaceholderData ? 'opacity-60' : 'opacity-100'
+          }`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Price (₦/kg)</th>
+                  <th className="px-6 py-4 w-12">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      checked={
+                        paginatedData.length > 0 &&
+                        visibleSelectedCount === paginatedData.length
+                      }
+                      onChange={handleSelectAll}
+                    />
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('name')}
+                    >
+                      Name
+                      {sortKey === 'name' && sortDirection === 'asc' ? (
+                        <ArrowDownAZ size={14} />
+                      ) : null}
+                      {sortKey === 'name' && sortDirection === 'desc' ? (
+                        <ArrowUpAZ size={14} />
+                      ) : null}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('category')}
+                    >
+                      Category
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('price')}
+                    >
+                      Price (₦/kg)
+                    </button>
+                  </th>
                   <th className="px-6 py-4">Bag Weight</th>
-                  <th className="px-6 py-4">Protein</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('protein')}
+                    >
+                      Protein
+                    </button>
+                  </th>
+                  <th className="px-6 py-4">
+                    <button
+                      className="inline-flex items-center gap-1"
+                      onClick={() => setSort('status')}
+                    >
+                      Status
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data?.map((ingredient) => (
+                {paginatedData.map((ingredient) => (
                   <tr
                     key={ingredient._id}
                     className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${
@@ -221,6 +455,17 @@ export default function IngredientsPage() {
                     }`}
                     onClick={() => setViewingIngredient(ingredient)}
                   >
+                    <td
+                      className="px-6 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        checked={selectedIds.has(ingredient._id)}
+                        onChange={() => handleSelectOne(ingredient._id)}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 text-primary rounded-lg">
@@ -296,6 +541,13 @@ export default function IngredientsPage() {
                     </td>
                   </tr>
                 ))}
+                {paginatedData.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                      No ingredients found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -303,7 +555,7 @@ export default function IngredientsPage() {
 
         {/* Mobile Card View */}
         <div className="sm:hidden space-y-4">
-          {data?.map((ingredient: Ingredient) => (
+          {paginatedData.map((ingredient: Ingredient) => (
             <div
               key={ingredient._id}
               onClick={() => setViewingIngredient(ingredient)}
@@ -386,12 +638,25 @@ export default function IngredientsPage() {
               </div>
             </div>
           ))}
-          {data?.length === 0 && (
+          {paginatedData.length === 0 && (
             <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
               <p className="text-gray-500 text-sm">No ingredients found</p>
             </div>
           )}
         </div>
+
+        <PaginationBar
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          itemLabel="ingredients"
+        />
       </div>
 
       {/* Right Drawer */}
@@ -412,6 +677,7 @@ export default function IngredientsPage() {
       {isModalOpen && (
         <IngredientModal
           ingredient={editingIngredient}
+          categoryOptions={categoryOptions}
           onClose={() => {
             setIsModalOpen(false);
             setEditingIngredient(null);
@@ -434,6 +700,28 @@ export default function IngredientsPage() {
         title="Delete Ingredient"
         message="Are you sure you want to delete this ingredient? This action cannot be undone."
         confirmText="Delete Ingredient"
+      />
+
+      {/* Bulk Toolbar + Modal */}
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            label: 'Delete Selected',
+            onClick: () => setIsBulkDeleting(true),
+            variant: 'danger',
+          },
+        ]}
+      />
+      <ConfirmModal
+        isOpen={isBulkDeleting}
+        onClose={() => setIsBulkDeleting(false)}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        isLoading={bulkDeleteMutation.isPending}
+        title={`Delete ${selectedIds.size} Ingredients?`}
+        message="This will permanently remove all selected ingredients."
+        confirmText="Delete All"
       />
     </div>
   );
@@ -629,18 +917,20 @@ function IngredientDetailDrawer({
 
 function IngredientModal({
   ingredient,
+  categoryOptions,
   onClose,
   onSubmit,
   isLoading,
 }: {
   ingredient: Ingredient | null;
+  categoryOptions: Array<{ value: string; label: string }>;
   onClose: () => void;
   onSubmit: (data: Partial<Ingredient>) => void;
   isLoading: boolean;
 }) {
   const [form, setForm] = useState({
     name: ingredient?.name || '',
-    category: ingredient?.category || 'PROTEIN',
+    category: ingredient?.category || categoryOptions[0]?.value || '',
     defaultPrice: ingredient?.defaultPrice || 0,
     bagWeight: ingredient?.bagWeight || null,
     specificGravity: ingredient?.specificGravity || null,
@@ -705,11 +995,15 @@ function IngredientModal({
               <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
+                required
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                <option value="" disabled>
+                  Select category
+                </option>
+                {categoryOptions.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
                   </option>
                 ))}
               </select>
