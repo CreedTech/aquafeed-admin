@@ -155,3 +155,39 @@ export async function DELETE(
     }
 }
 
+export async function PATCH(
+    request: NextRequest,
+    { params }: { params: Promise<{ path: string[] }> }
+) {
+    const API_URL = getBackendUrl();
+    try {
+        const { path } = await params;
+        const cookieStore = await cookies();
+        const sessionId = cookieStore.get('backend_session')?.value;
+
+        const apiPath = path.join('/');
+        const body = await request.json();
+
+        const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+        };
+
+        if (sessionId) {
+            headers['Cookie'] = `connect.sid=${sessionId}`;
+        }
+
+        console.log(`[Proxy PATCH] Forwarding to: ${API_URL}/${apiPath}`);
+
+        const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify(body),
+        });
+
+        const data = await backendResponse.json();
+        return NextResponse.json(data, { status: backendResponse.status });
+    } catch (error) {
+        console.error('[Proxy PATCH Error]:', error);
+        return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    }
+}

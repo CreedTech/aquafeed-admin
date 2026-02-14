@@ -24,13 +24,12 @@ export async function POST() {
             });
         }
 
-        // Clear local session cookie
-        cookieStore.delete('backend_session');
-
-        return NextResponse.json({ message: 'Logged out successfully' });
+        // Clear local session cookie explicitly on root path
+        const response = NextResponse.json({ message: 'Logged out successfully' });
+        response.cookies.delete('backend_session');
+        return response;
     } catch (error) {
         console.error('[Proxy logout Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
-
