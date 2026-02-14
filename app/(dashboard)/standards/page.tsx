@@ -11,7 +11,6 @@ import {
   Trash2,
   X,
   Target,
-  Fish,
   Activity,
 } from 'lucide-react';
 
@@ -23,12 +22,15 @@ interface Nutrient {
 interface FeedStandard {
   _id: string;
   name: string;
-  stage: 'Fry' | 'Fingerling' | 'Grower' | 'Finisher';
-  fishType: string; // Dynamic from Categories
+  feedCategory: 'Catfish' | 'Poultry';
+  poultryType?: 'Broiler' | 'Layer';
+  stage: string;
   description?: string;
   targetNutrients: {
     protein: Nutrient;
     fat: Nutrient;
+    carbohydrate?: Nutrient;
+    energy?: Nutrient;
     fiber: Nutrient;
     ash: Nutrient;
     lysine: Nutrient;
@@ -101,8 +103,8 @@ export default function StandardsPage() {
   // Stats
   const stats = {
     total: data?.length || 0,
-    catfish: data?.filter((s) => s.fishType === 'Catfish').length || 0,
-    tilapia: data?.filter((s) => s.fishType === 'Tilapia').length || 0,
+    catfish: data?.filter((s) => s.feedCategory === 'Catfish').length || 0,
+    poultry: data?.filter((s) => s.feedCategory === 'Poultry').length || 0,
     active: data?.filter((s) => s.isActive).length || 0,
   };
 
@@ -158,8 +160,8 @@ export default function StandardsPage() {
             <p className="text-2xl font-bold text-gray-900">{stats.catfish}</p>
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
-            <p className="text-sm text-gray-500">Tilapia</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.tilapia}</p>
+            <p className="text-sm text-gray-500">Poultry</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.poultry}</p>
           </div>
           <div className="p-4 bg-white rounded-xl border border-gray-200">
             <p className="text-sm text-gray-500">Active</p>
@@ -253,8 +255,10 @@ export default function StandardsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700">
-                        <Fish size={12} />
-                        {standard.fishType}
+                        {standard.feedCategory}{' '}
+                        {standard.poultryType
+                          ? `(${standard.poultryType})`
+                          : ''}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -353,8 +357,8 @@ export default function StandardsPage() {
 
               <div className="flex flex-wrap gap-2 mb-3">
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-bold uppercase">
-                  <Fish size={10} />
-                  {standard.fishType}
+                  {standard.feedCategory}{' '}
+                  {standard.poultryType ? `(${standard.poultryType})` : ''}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-gray-700 text-[10px] font-bold uppercase">
                   <Activity size={10} />
@@ -424,7 +428,6 @@ export default function StandardsPage() {
       {isModalOpen && (
         <StandardModal
           standard={editingStandard}
-          fishTypes={fishTypes}
           onClose={() => {
             setIsModalOpen(false);
             setEditingStandard(null);
@@ -458,7 +461,8 @@ function StandardDetailDrawer({
           </h2>
           <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
             <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold uppercase tracking-wider">
-              {standard.fishType}
+              {standard.feedCategory}{' '}
+              {standard.poultryType ? `- ${standard.poultryType}` : ''}
             </span>
             <span className="text-gray-300">/</span>
             <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -568,13 +572,11 @@ function StandardDetailDrawer({
 
 function StandardModal({
   standard,
-  fishTypes,
   onClose,
   onSubmit,
   isLoading,
 }: {
   standard: FeedStandard | null;
-  fishTypes?: { name: string; displayName: string }[];
   onClose: () => void;
   onSubmit: (data: Partial<FeedStandard>) => void;
   isLoading: boolean;
@@ -592,12 +594,17 @@ function StandardModal({
 
   const [form, setForm] = useState({
     name: standard?.name || '',
-    fishType: standard?.fishType || 'Catfish',
+    feedCategory: standard?.feedCategory || 'Catfish',
+    poultryType: standard?.poultryType || 'Broiler',
     stage: standard?.stage || 'Fry',
     description: standard?.description || '',
     isActive: standard?.isActive ?? true,
     isDefault: standard?.isDefault ?? false,
-    targetNutrients: standard?.targetNutrients || defaultNutrients,
+    targetNutrients: standard?.targetNutrients || {
+      ...defaultNutrients,
+      carbohydrate: { min: 0, max: 0 },
+      energy: { min: 0, max: 0 },
+    },
   });
 
   const updateNutrient = (key: string, field: 'min' | 'max', value: number) => {
@@ -649,44 +656,66 @@ function StandardModal({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Fish Type
+                Feed Category
               </label>
               <select
-                value={form.fishType}
+                value={form.feedCategory}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    fishType: e.target.value as FeedStandard['fishType'],
+                    feedCategory: e.target.value as 'Catfish' | 'Poultry',
                   })
                 }
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               >
-                {fishTypes?.map((ft) => (
-                  <option key={ft.name} value={ft.name}>
-                    {ft.displayName}
-                  </option>
-                ))}
+                <option value="Catfish">Catfish</option>
+                <option value="Poultry">Poultry</option>
               </select>
             </div>
+            {form.feedCategory === 'Poultry' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Poultry Type
+                </label>
+                <select
+                  value={form.poultryType}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      poultryType: e.target.value as 'Broiler' | 'Layer',
+                    })
+                  }
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                >
+                  <option value="Broiler">Broiler</option>
+                  <option value="Layer">Layer</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Stage
               </label>
-              <select
-                value={form.stage}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    stage: e.target.value as FeedStandard['stage'],
-                  })
-                }
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-              >
-                <option value="Fry">Fry</option>
-                <option value="Fingerling">Fingerling</option>
-                <option value="Grower">Grower</option>
-                <option value="Finisher">Finisher</option>
-              </select>
+              {form.feedCategory === 'Catfish' ? (
+                <select
+                  value={form.stage}
+                  onChange={(e) => setForm({ ...form, stage: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                >
+                  <option value="Fry">Fry</option>
+                  <option value="Fingerling">Fingerling</option>
+                  <option value="Grower">Grower</option>
+                  <option value="Finisher">Finisher</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form.stage}
+                  onChange={(e) => setForm({ ...form, stage: e.target.value })}
+                  placeholder="Starter, Finisher, etc."
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                />
+              )}
             </div>
           </div>
           <div>

@@ -25,6 +25,7 @@ const sidebarItems = [
   { icon: Tags, label: 'Categories', href: '/categories' },
   { icon: Database, label: 'Ingredients', href: '/ingredients' },
   { icon: Target, label: 'Standards', href: '/standards' },
+  { icon: LayoutDashboard, label: 'Templates', href: '/templates' },
   { icon: FlaskConical, label: 'Formulations', href: '/formulations' },
   { icon: Fish, label: 'Farms', href: '/farms' },
   { icon: CreditCard, label: 'Transactions', href: '/transactions' },
@@ -47,7 +48,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         isCollapsed ? 'md:w-[60px]' : 'md:w-[240px]',
         isOpen
           ? 'w-[240px] translate-x-0'
-          : 'w-[240px] -translate-x-full md:translate-x-0'
+          : 'w-[240px] -translate-x-full md:translate-x-0',
       )}
     >
       {/* Header */}
@@ -55,7 +56,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div
           className={cn(
             'flex items-center gap-2 overflow-hidden',
-            isCollapsed && 'md:justify-center'
+            isCollapsed && 'md:justify-center',
           )}
         >
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
@@ -64,7 +65,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <span
             className={cn(
               'font-bold text-gray-100 truncate',
-              isCollapsed && 'md:hidden'
+              isCollapsed && 'md:hidden',
             )}
           >
             AquaFeed Admin
@@ -93,7 +94,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'hover:bg-gray-800 text-gray-400 hover:text-gray-100',
-                isCollapsed && 'md:justify-center md:px-2'
+                isCollapsed && 'md:justify-center md:px-2',
               )}
             >
               <item.icon size={20} />
@@ -111,7 +112,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={cn(
             'w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-800 text-gray-400 transition-colors',
-            isCollapsed && 'justify-center'
+            isCollapsed && 'justify-center',
           )}
         >
           {isCollapsed ? (
