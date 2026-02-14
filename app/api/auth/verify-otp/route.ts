@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 // Robust backend URL resolution
 const getBackendUrl = () => {
@@ -32,13 +31,13 @@ export async function POST(request: NextRequest) {
         // Forward the session cookie to the client
         if (setCookieHeader) {
             // Parse and set the session cookie for our domain
-            const cookieStore = await cookies();
             const sessionId = setCookieHeader.match(/connect\.sid=([^;]+)/)?.[1];
             if (sessionId) {
-                cookieStore.set('backend_session', sessionId, {
+                response.cookies.set('backend_session', sessionId, {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',
                     sameSite: 'lax',
+                    path: '/',
                     maxAge: 30 * 24 * 60 * 60, // 30 days
                 });
             }
@@ -50,4 +49,3 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
-
