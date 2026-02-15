@@ -351,7 +351,7 @@ export default function CategoriesPage() {
         }`}
       >
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left min-w-[980px]">
+          <table className="w-full text-sm text-left min-w-245">
             <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
               <tr>
                 <th className="px-6 py-4 w-12">
@@ -444,7 +444,7 @@ export default function CategoriesPage() {
                         {typeConfig.label}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-500 max-w-[280px] truncate">
+                    <td className="px-6 py-4 text-gray-500 max-w-70 truncate">
                       {category.description || '-'}
                     </td>
                     <td className="px-6 py-4 font-mono text-gray-700">
