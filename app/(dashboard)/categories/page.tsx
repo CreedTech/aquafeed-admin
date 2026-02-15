@@ -32,7 +32,7 @@ interface Category {
   _id: string;
   name: string;
   displayName: string;
-  type: 'ingredient' | 'fish_type' | 'stage' | 'other';
+  type: string;
   description?: string;
   isActive: boolean;
   sortOrder: number;
@@ -43,7 +43,7 @@ type SortKey = 'name' | 'displayName' | 'type' | 'sortOrder' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 const TYPE_CONFIG: Record<
-  Category['type'],
+  string,
   {
     label: string;
     icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -72,11 +72,39 @@ const TYPE_CONFIG: Record<
   },
 };
 
+const DEFAULT_TYPE_STYLE = {
+  label: 'Other',
+  icon: Shapes,
+  badge: 'bg-gray-100 text-gray-700',
+};
+
+type CategoriesResponse = {
+  categories: Category[];
+  filteredTotal?: number;
+  summary?: {
+    total: number;
+    active: number;
+    inactive: number;
+    byType: Record<string, number>;
+  };
+  filterOptions?: {
+    types: string[];
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+};
+
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  const [typeFilter, setTypeFilter] = useState<Category['type'] | ''>('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -89,10 +117,30 @@ export default function CategoriesPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const { data, isLoading, isPlaceholderData } = useQuery({
-    queryKey: ['admin-categories'],
+    queryKey: [
+      'admin-categories',
+      debouncedSearch,
+      typeFilter,
+      statusFilter,
+      sortKey,
+      sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
-      const { data } = await api.get('/admin/categories');
-      return (data.categories as Category[]) || [];
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (typeFilter) params.append('type', typeFilter);
+      if (statusFilter) {
+        params.append('active', statusFilter === 'active' ? 'true' : 'false');
+      }
+      params.append('sortKey', sortKey);
+      params.append('sortDirection', sortDirection);
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
+
+      const { data } = await api.get(`/admin/categories?${params.toString()}`);
+      return data as CategoriesResponse;
     },
     placeholderData: keepPreviousData,
   });
@@ -139,44 +187,10 @@ export default function CategoriesPage() {
     },
   });
 
-  const filteredData = useMemo(() => {
-    const base = data || [];
-    const filtered = base.filter((category) => {
-      const matchesSearch =
-        !debouncedSearch ||
-        category.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        category.displayName
-          ?.toLowerCase()
-          .includes(debouncedSearch.toLowerCase()) ||
-        category.description
-          ?.toLowerCase()
-          .includes(debouncedSearch.toLowerCase());
-      const matchesType = !typeFilter || category.type === typeFilter;
-      const matchesStatus = !statusFilter
-        ? true
-        : statusFilter === 'active'
-          ? category.isActive
-          : !category.isActive;
-
-      return matchesSearch && matchesType && matchesStatus;
-    });
-
-    return [...filtered].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'displayName')
-        return a.displayName.localeCompare(b.displayName) * dir;
-      if (sortKey === 'type') return a.type.localeCompare(b.type) * dir;
-      if (sortKey === 'sortOrder') return (a.sortOrder - b.sortOrder) * dir;
-      return (Number(a.isActive) - Number(b.isActive)) * dir;
-    });
-  }, [data, debouncedSearch, typeFilter, statusFilter, sortDirection, sortKey]);
-
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedData = data?.categories || [];
+  const totalItems = data?.meta?.total ?? data?.filteredTotal ?? paginatedData.length;
+  const totalPages = Math.max(1, data?.meta?.pages ?? 1);
   const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * pageSize;
-  const paginatedData = filteredData.slice(start, start + pageSize);
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -185,6 +199,7 @@ export default function CategoriesPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+    setPage(1);
   };
 
   const handleSelectOne = (id: string) => {
@@ -208,13 +223,14 @@ export default function CategoriesPage() {
     setSelectedIds(next);
   };
 
+  const types = useMemo(() => data?.filterOptions?.types || [], [data?.filterOptions?.types]);
   const stats = {
-    total: data?.length || 0,
-    active: data?.filter((category) => category.isActive).length || 0,
-    inactive: data?.filter((category) => !category.isActive).length || 0,
-    ingredient: data?.filter((category) => category.type === 'ingredient').length || 0,
-    fishType: data?.filter((category) => category.type === 'fish_type').length || 0,
-    stage: data?.filter((category) => category.type === 'stage').length || 0,
+    total: data?.summary?.total || 0,
+    active: data?.summary?.active || 0,
+    inactive: data?.summary?.inactive || 0,
+    ingredient: data?.summary?.byType?.ingredient || 0,
+    fishType: data?.summary?.byType?.fish_type || 0,
+    stage: data?.summary?.byType?.stage || 0,
   };
 
   if (isLoading && !data) {
@@ -279,17 +295,20 @@ export default function CategoriesPage() {
         <select
           value={typeFilter}
           onChange={(e) => {
-            setTypeFilter(e.target.value as Category['type'] | '');
+            setTypeFilter(e.target.value);
             setPage(1);
           }}
           className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
         >
           <option value="">All Types</option>
-          {Object.entries(TYPE_CONFIG).map(([value, config]) => (
-            <option key={value} value={value}>
-              {config.label}
-            </option>
-          ))}
+          {types.map((value) => {
+            const config = TYPE_CONFIG[value] || DEFAULT_TYPE_STYLE;
+            return (
+              <option key={value} value={value}>
+                {config.label}
+              </option>
+            );
+          })}
         </select>
 
         <select
@@ -314,6 +333,7 @@ export default function CategoriesPage() {
             ];
             setSortKey(key);
             setSortDirection(direction);
+            setPage(1);
           }}
           className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
         >
@@ -394,7 +414,8 @@ export default function CategoriesPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginatedData.map((category) => {
-                const typeConfig = TYPE_CONFIG[category.type];
+                const typeConfig =
+                  TYPE_CONFIG[category.type] || DEFAULT_TYPE_STYLE;
                 const TypeIcon = typeConfig.icon;
                 return (
                   <tr key={category._id} className="hover:bg-gray-50/50 transition-colors">
@@ -476,7 +497,7 @@ export default function CategoriesPage() {
 
       <div className="sm:hidden space-y-4">
         {paginatedData.map((category) => {
-          const typeConfig = TYPE_CONFIG[category.type];
+          const typeConfig = TYPE_CONFIG[category.type] || DEFAULT_TYPE_STYLE;
           const TypeIcon = typeConfig.icon;
           return (
             <div key={category._id} className="bg-white p-4 rounded-xl border border-gray-200">
@@ -553,6 +574,7 @@ export default function CategoriesPage() {
       {isModalOpen && (
         <CategoryModal
           category={editingCategory}
+          typeOptions={types}
           onClose={() => {
             setIsModalOpen(false);
             setEditingCategory(null);
@@ -626,19 +648,25 @@ function StatCard({
 
 function CategoryModal({
   category,
+  typeOptions,
   onClose,
   onSubmit,
   isLoading,
 }: {
   category: Category | null;
+  typeOptions: string[];
   onClose: () => void;
   onSubmit: (payload: Partial<Category>) => void;
   isLoading: boolean;
 }) {
+  const allTypeOptions = Array.from(
+    new Set(['ingredient', 'fish_type', 'stage', 'other', ...typeOptions]),
+  );
+
   const [form, setForm] = useState({
     name: category?.name || '',
     displayName: category?.displayName || '',
-    type: category?.type || ('ingredient' as Category['type']),
+    type: category?.type || 'ingredient',
     description: category?.description || '',
     sortOrder: category?.sortOrder || 0,
     isActive: category?.isActive ?? true,
@@ -710,18 +738,20 @@ function CategoryModal({
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Type
               </label>
-              <select
+              <input
+                type="text"
+                list="category-type-options"
                 value={form.type}
-                onChange={(e) =>
-                  setForm({ ...form, type: e.target.value as Category['type'] })
-                }
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                placeholder="e.g. ingredient, stage"
+                required
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-              >
-                <option value="ingredient">Ingredient</option>
-                <option value="fish_type">Fish Type</option>
-                <option value="stage">Feed Stage</option>
-                <option value="other">Other</option>
-              </select>
+              />
+              <datalist id="category-type-options">
+                {allTypeOptions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">

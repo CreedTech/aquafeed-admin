@@ -58,6 +58,29 @@ interface IngredientCategory {
   displayName: string;
 }
 
+type IngredientsResponse = {
+  ingredients: Ingredient[];
+  filteredTotal?: number;
+  summary?: {
+    total: number;
+    active: number;
+    inactive: number;
+    byCategory: Record<string, number>;
+    byCategoryActive?: Record<string, number>;
+  };
+  filterOptions?: {
+    categories: string[];
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+};
+
 type SortKey = 'name' | 'category' | 'price' | 'protein' | 'status';
 type SortDirection = 'asc' | 'desc';
 
@@ -91,13 +114,29 @@ export default function IngredientsPage() {
   });
 
   const { data, isLoading, isPlaceholderData } = useQuery({
-    queryKey: ['ingredients', debouncedSearch, categoryFilter],
+    queryKey: [
+      'admin-ingredients',
+      debouncedSearch,
+      categoryFilter,
+      statusFilter,
+      sortKey,
+      sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (categoryFilter) params.append('category', categoryFilter);
-      const { data } = await api.get(`/ingredients?${params.toString()}`);
-      return data.ingredients as Ingredient[];
+      if (statusFilter) {
+        params.append('active', statusFilter === 'active' ? 'true' : 'false');
+      }
+      params.append('sortKey', sortKey);
+      params.append('sortDirection', sortDirection);
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
+      const { data } = await api.get(`/admin/ingredients?${params.toString()}`);
+      return data as IngredientsResponse;
     },
     placeholderData: keepPreviousData,
   });
@@ -106,7 +145,7 @@ export default function IngredientsPage() {
     mutationFn: (data: Partial<Ingredient>) =>
       api.post('/admin/ingredients', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ingredients'] });
       setIsModalOpen(false);
     },
   });
@@ -115,7 +154,7 @@ export default function IngredientsPage() {
     mutationFn: ({ id, data }: { id: string; data: Partial<Ingredient> }) =>
       api.put(`/admin/ingredients/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ingredients'] });
       setIsModalOpen(false);
       setEditingIngredient(null);
     },
@@ -124,7 +163,7 @@ export default function IngredientsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/ingredients/${id}`),
     onSuccess: (_response, id) => {
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ingredients'] });
       setDeletingId(null);
       if (viewingIngredient?._id === id) {
         setViewingIngredient(null);
@@ -142,7 +181,7 @@ export default function IngredientsPage() {
     mutationFn: (ids: string[]) =>
       Promise.all(ids.map((id) => api.delete(`/admin/ingredients/${id}`))),
     onSuccess: (_response, ids) => {
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ingredients'] });
       setSelectedIds(new Set());
       setIsBulkDeleting(false);
       if (viewingIngredient && ids.includes(viewingIngredient._id)) {
@@ -151,35 +190,13 @@ export default function IngredientsPage() {
     },
   });
 
-  const filteredData = useMemo(() => {
-    const base = data || [];
-    const byStatus = base.filter((ingredient) => {
-      if (!statusFilter) return true;
-      return statusFilter === 'active'
-        ? ingredient.isActive
-        : !ingredient.isActive;
-    });
-
-    const sorted = [...byStatus].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'category')
-        return a.category.localeCompare(b.category) * dir;
-      if (sortKey === 'price')
-        return (a.defaultPrice - b.defaultPrice) * dir;
-      if (sortKey === 'protein')
-        return ((a.nutrients?.protein || 0) - (b.nutrients?.protein || 0)) * dir;
-      return (Number(a.isActive) - Number(b.isActive)) * dir;
-    });
-
-    return sorted;
-  }, [data, statusFilter, sortKey, sortDirection]);
-
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedData = useMemo(
+    () => data?.ingredients ?? [],
+    [data?.ingredients],
+  );
+  const totalItems = data?.meta?.total ?? data?.filteredTotal ?? paginatedData.length;
+  const totalPages = Math.max(1, data?.meta?.pages ?? 1);
   const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -188,6 +205,7 @@ export default function IngredientsPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+    setPage(1);
   };
 
   const handleSelectOne = (id: string) => {
@@ -227,21 +245,26 @@ export default function IngredientsPage() {
       }));
     }
 
-    const discovered = Array.from(
-      new Set((data || []).map((ingredient) => ingredient.category).filter(Boolean)),
+    const discovered = (
+      data?.filterOptions?.categories ||
+      Array.from(
+        new Set(
+          (data?.ingredients || [])
+            .map((ingredient) => ingredient.category)
+            .filter(Boolean),
+        ),
+      )
     ).sort((a, b) => a.localeCompare(b));
 
     return discovered.map((category) => ({ value: category, label: category }));
-  }, [ingredientCategories, data]);
+  }, [ingredientCategories, data?.filterOptions?.categories, data?.ingredients]);
 
   // Group by category for stats
   const categoryStats = categoryOptions.map((category) => ({
     value: category.value,
     label: category.label,
-    count: filteredData.filter((i) => i.category === category.value).length || 0,
-    active:
-      filteredData.filter((i) => i.category === category.value && i.isActive)
-        .length || 0,
+    count: data?.summary?.byCategory?.[category.value] || 0,
+    active: data?.summary?.byCategoryActive?.[category.value] || 0,
   }));
 
   if (isLoading && !data) {
@@ -359,6 +382,7 @@ export default function IngredientsPage() {
               ];
               setSortKey(key);
               setSortDirection(direction);
+              setPage(1);
             }}
             className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
           >
@@ -369,7 +393,7 @@ export default function IngredientsPage() {
             <option value="protein:desc">Protein (High-Low)</option>
           </select>
           <div className="text-sm text-gray-500">
-            {filteredData.length} ingredients
+            {totalItems} ingredients
           </div>
         </div>
 

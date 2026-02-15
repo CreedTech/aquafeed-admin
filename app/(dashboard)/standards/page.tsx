@@ -56,6 +56,31 @@ interface FeedStandard {
   createdAt: string;
 }
 
+interface StageCategory {
+  _id: string;
+  name: string;
+  displayName: string;
+}
+
+type StandardsResponse = {
+  standards: FeedStandard[];
+  filteredTotal?: number;
+  summary?: {
+    total: number;
+    fish: number;
+    poultry: number;
+    active: number;
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+};
+
 type SortKey = 'name' | 'feedType' | 'stage' | 'protein' | 'status';
 type SortDirection = 'asc' | 'desc';
 
@@ -81,15 +106,40 @@ export default function StandardsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+  const { data: stageCategories = [] } = useQuery({
+    queryKey: ['admin-stage-categories'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/categories?type=stage');
+      return (data.categories as StageCategory[]) || [];
+    },
+  });
+
   const { data, isLoading, isPlaceholderData } = useQuery({
-    queryKey: ['admin-standards', debouncedSearch, feedTypeFilter, stageFilter],
+    queryKey: [
+      'admin-standards',
+      debouncedSearch,
+      feedTypeFilter,
+      stageFilter,
+      statusFilter,
+      sortKey,
+      sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (feedTypeFilter) params.append('feedType', feedTypeFilter);
       if (stageFilter) params.append('stage', stageFilter);
+      if (statusFilter) {
+        params.append('active', statusFilter === 'active' ? 'true' : 'false');
+      }
+      params.append('sortKey', sortKey);
+      params.append('sortDirection', sortDirection);
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
       const { data } = await api.get(`/admin/standards?${params.toString()}`);
-      return data.standards as FeedStandard[];
+      return data as StandardsResponse;
     },
     placeholderData: keepPreviousData,
   });
@@ -143,52 +193,28 @@ export default function StandardsPage() {
     },
   });
 
-  const filteredData = useMemo(() => {
-    const base = data || [];
-    const filtered = base.filter((standard) => {
-      const matchesSearch =
-        !search || standard.name.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = !statusFilter
-        ? true
-        : statusFilter === 'active'
-          ? standard.isActive
-          : !standard.isActive;
-      return matchesSearch && matchesStatus;
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-      const aFeedType =
-        (a.feedType || '').toLowerCase() === 'poultry' ||
-        a.feedCategory === 'Poultry'
-          ? 'poultry'
-          : 'fish';
-      const bFeedType =
-        (b.feedType || '').toLowerCase() === 'poultry' ||
-        b.feedCategory === 'Poultry'
-          ? 'poultry'
-          : 'fish';
-
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'feedType') return aFeedType.localeCompare(bFeedType) * dir;
-      if (sortKey === 'stage') return a.stage.localeCompare(b.stage) * dir;
-      if (sortKey === 'protein') {
-        return (
-          ((a.targetNutrients?.protein?.min || 0) -
-            (b.targetNutrients?.protein?.min || 0)) * dir
-        );
-      }
-      return (Number(a.isActive) - Number(b.isActive)) * dir;
-    });
-
-    return sorted;
-  }, [data, search, statusFilter, sortDirection, sortKey]);
-
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedData = useMemo(
+    () => data?.standards ?? [],
+    [data?.standards],
+  );
+  const totalItems = data?.meta?.total ?? data?.filteredTotal ?? paginatedData.length;
+  const totalPages = Math.max(1, data?.meta?.pages ?? 1);
   const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+
+  const stageOptions = useMemo(() => {
+    if (stageCategories.length > 0) {
+      return stageCategories.map((stage) => ({
+        value: stage.displayName || stage.name,
+        label: stage.displayName || stage.name,
+      }));
+    }
+
+    const discovered = Array.from(
+      new Set((data?.standards || []).map((standard) => standard.stage).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return discovered.map((stage) => ({ value: stage, label: stage }));
+  }, [data?.standards, stageCategories]);
 
   const visibleSelectedCount = useMemo(
     () =>
@@ -206,6 +232,7 @@ export default function StandardsPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+    setPage(1);
   };
 
   const handleSelectOne = (id: string) => {
@@ -230,13 +257,10 @@ export default function StandardsPage() {
 
   // Stats
   const stats = {
-    total: data?.length || 0,
-    fish:
-      data?.filter(
-        (s) => (s.feedType || '').toLowerCase() === 'fish' || s.feedCategory === 'Catfish',
-      ).length || 0,
-    poultry: data?.filter((s) => s.feedCategory === 'Poultry').length || 0,
-    active: data?.filter((s) => s.isActive).length || 0,
+    total: data?.summary?.total || 0,
+    fish: data?.summary?.fish || 0,
+    poultry: data?.summary?.poultry || 0,
+    active: data?.summary?.active || 0,
   };
 
   if (isLoading && !data) {
@@ -335,10 +359,11 @@ export default function StandardsPage() {
               className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Stages</option>
-              <option value="Fry">Fry</option>
-              <option value="Fingerling">Fingerling</option>
-              <option value="Grower">Grower</option>
-              <option value="Finisher">Finisher</option>
+              {stageOptions.map((stage) => (
+                <option key={stage.value} value={stage.value}>
+                  {stage.label}
+                </option>
+              ))}
             </select>
             <select
               value={statusFilter}
@@ -354,14 +379,15 @@ export default function StandardsPage() {
             </select>
             <select
               value={`${sortKey}:${sortDirection}`}
-              onChange={(e) => {
-                const [key, direction] = e.target.value.split(':') as [
-                  SortKey,
-                  SortDirection,
-                ];
-                setSortKey(key);
-                setSortDirection(direction);
-              }}
+            onChange={(e) => {
+              const [key, direction] = e.target.value.split(':') as [
+                SortKey,
+                SortDirection,
+              ];
+              setSortKey(key);
+              setSortDirection(direction);
+              setPage(1);
+            }}
               className="flex-1 sm:w-[180px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="name:asc">Name (A-Z)</option>
