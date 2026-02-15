@@ -60,6 +60,25 @@ interface Category {
 
 type SortKey = 'name' | 'feedCategory' | 'stage' | 'items' | 'status';
 type SortDirection = 'asc' | 'desc';
+type TemplatesResponse = {
+  templates: FeedTemplate[];
+  filteredTotal?: number;
+  summary?: {
+    total: number;
+    active: number;
+    inactive: number;
+    fish: number;
+    poultry: number;
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+};
 const feedCategoryLabel = (value: FeedTemplate['feedCategory']) =>
   value === 'Catfish' ? 'Fish' : 'Poultry';
 
@@ -88,14 +107,34 @@ export default function TemplatesPage() {
 
   // Queries
   const {
-    data: templates,
+    data: templatesResponse,
     isLoading: isTemplatesLoading,
     isPlaceholderData,
   } = useQuery({
-    queryKey: ['templates'],
+    queryKey: [
+      'templates',
+      debouncedSearch,
+      categoryFilter,
+      statusFilter,
+      sortKey,
+      sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
-      const { data } = await api.get('/admin/templates');
-      return data.templates as FeedTemplate[];
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (categoryFilter) params.append('feedCategory', categoryFilter);
+      if (statusFilter) {
+        params.append('active', statusFilter === 'active' ? 'true' : 'false');
+      }
+      params.append('sortKey', sortKey);
+      params.append('sortDirection', sortDirection);
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
+
+      const { data } = await api.get(`/admin/templates?${params.toString()}`);
+      return data as TemplatesResponse;
     },
     placeholderData: keepPreviousData,
   });
@@ -125,10 +164,15 @@ export default function TemplatesPage() {
   });
 
   const { data: poultryTypes } = useQuery({
-    queryKey: ['categories', 'other'],
+    queryKey: ['categories', 'poultry_type'],
     queryFn: async () => {
-      const { data } = await api.get('/admin/categories?type=other');
-      return data.categories as Category[];
+      const { data } = await api.get('/admin/categories?type=poultry_type');
+      const categories = (data.categories as Category[]) || [];
+      if (categories.length > 0) return categories;
+
+      // Backward compatibility for older datasets.
+      const fallback = await api.get('/admin/categories?type=other');
+      return (fallback.data.categories as Category[]) || [];
     },
   });
 
@@ -186,53 +230,16 @@ export default function TemplatesPage() {
     setIsModalOpen(true);
   };
 
-  // Filtering
-  const filteredTemplates = useMemo(() => {
-    const base = templates || [];
-    const filtered = base.filter((template) => {
-      const matchesSearch =
-        !debouncedSearch ||
-        template.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesCategory =
-        !categoryFilter || template.feedCategory === categoryFilter;
-      const matchesStatus = !statusFilter
-        ? true
-        : statusFilter === 'active'
-          ? template.isActive
-          : !template.isActive;
-
-      return matchesSearch && matchesCategory && matchesStatus;
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-      if (sortKey === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortKey === 'feedCategory')
-        return a.feedCategory.localeCompare(b.feedCategory) * dir;
-      if (sortKey === 'stage') return a.stage.localeCompare(b.stage) * dir;
-      if (sortKey === 'items')
-        return ((a.items?.length || 0) - (b.items?.length || 0)) * dir;
-      return (Number(a.isActive) - Number(b.isActive)) * dir;
-    });
-
-    return sorted;
-  }, [
-    templates,
-    debouncedSearch,
-    categoryFilter,
-    statusFilter,
-    sortDirection,
-    sortKey,
-  ]);
-
-  const totalItems = filteredTemplates.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedTemplates = filteredTemplates.slice(
-    startIndex,
-    startIndex + pageSize
+  const paginatedTemplates = useMemo(
+    () => templatesResponse?.templates ?? [],
+    [templatesResponse?.templates],
   );
+  const totalItems =
+    templatesResponse?.meta?.total ??
+    templatesResponse?.filteredTotal ??
+    paginatedTemplates.length;
+  const totalPages = Math.max(1, templatesResponse?.meta?.pages ?? 1);
+  const currentPage = Math.min(page, totalPages);
 
   const visibleSelectedCount = useMemo(
     () =>
@@ -250,6 +257,7 @@ export default function TemplatesPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+    setPage(1);
   };
 
   const handleSelectOne = (id: string) => {
@@ -274,13 +282,13 @@ export default function TemplatesPage() {
 
   // Stats
   const stats = {
-    total: templates?.length || 0,
-    fish: templates?.filter((t) => t.feedCategory === 'Catfish').length || 0,
-    poultry: templates?.filter((t) => t.feedCategory === 'Poultry').length || 0,
-    active: templates?.filter((t) => t.isActive).length || 0,
+    total: templatesResponse?.summary?.total || 0,
+    fish: templatesResponse?.summary?.fish || 0,
+    poultry: templatesResponse?.summary?.poultry || 0,
+    active: templatesResponse?.summary?.active || 0,
   };
 
-  if (isTemplatesLoading && !templates) {
+  if (isTemplatesLoading && !templatesResponse) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -393,6 +401,7 @@ export default function TemplatesPage() {
               ];
               setSortKey(key);
               setSortDirection(direction);
+              setPage(1);
             }}
             className="w-full sm:w-auto px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
@@ -401,9 +410,7 @@ export default function TemplatesPage() {
             <option value="stage:asc">Stage (A-Z)</option>
             <option value="items:desc">Components (High-Low)</option>
           </select>
-          <div className="text-sm text-gray-500">
-            {filteredTemplates.length} templates
-          </div>
+          <div className="text-sm text-gray-500">{totalItems} templates</div>
         </div>
 
         {/* Desktop Table View */}

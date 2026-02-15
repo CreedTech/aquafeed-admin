@@ -55,6 +55,27 @@ type SortKey =
   | 'status';
 type SortDirection = 'asc' | 'desc';
 
+type RulesResponse = {
+  rules: Rule[];
+  filteredTotal?: number;
+  summary?: {
+    total: number;
+    active: number;
+    inactive: number;
+    fish: number;
+    poultry: number;
+    both: number;
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+};
+
 export default function AlternativesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -80,14 +101,34 @@ export default function AlternativesPage() {
   });
 
   const {
-    data: rules = [],
+    data: rulesResponse,
     isLoading: rulesLoading,
     isPlaceholderData,
   } = useQuery({
-    queryKey: ['admin-alternative-rules'],
+    queryKey: [
+      'admin-alternative-rules',
+      debouncedSearch,
+      feedTypeFilter,
+      statusFilter,
+      sortKey,
+      sortDirection,
+      page,
+      pageSize,
+    ],
     queryFn: async () => {
-      const { data } = await api.get('/admin/alternatives/rules');
-      return (data.rules as Rule[]) || [];
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (feedTypeFilter) params.append('feedType', feedTypeFilter);
+      if (statusFilter) {
+        params.append('active', statusFilter === 'active' ? 'true' : 'false');
+      }
+      params.append('sortKey', sortKey);
+      params.append('sortDirection', sortDirection);
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
+
+      const { data } = await api.get(`/admin/alternatives/rules?${params.toString()}`);
+      return data as RulesResponse;
     },
     placeholderData: keepPreviousData,
   });
@@ -135,49 +176,16 @@ export default function AlternativesPage() {
     },
   });
 
-  const filteredRules = useMemo(() => {
-    const filtered = rules.filter((rule) => {
-      const originalName = rule.originalIngredientId?.name || '';
-      const alternativeName = rule.alternativeIngredientId?.name || '';
-      const matchesSearch =
-        !debouncedSearch ||
-        originalName.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        alternativeName.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesFeedType =
-        !feedTypeFilter || rule.feedType === feedTypeFilter;
-      const matchesStatus = !statusFilter
-        ? true
-        : statusFilter === 'active'
-          ? rule.isActive
-          : !rule.isActive;
-
-      return matchesSearch && matchesFeedType && matchesStatus;
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-      const aOriginal = a.originalIngredientId?.name || '';
-      const bOriginal = b.originalIngredientId?.name || '';
-      const aAlternative = a.alternativeIngredientId?.name || '';
-      const bAlternative = b.alternativeIngredientId?.name || '';
-
-      if (sortKey === 'original') return aOriginal.localeCompare(bOriginal) * dir;
-      if (sortKey === 'alternative')
-        return aAlternative.localeCompare(bAlternative) * dir;
-      if (sortKey === 'feedType') return a.feedType.localeCompare(b.feedType) * dir;
-      if (sortKey === 'maxBlendPercent')
-        return (a.maxBlendPercent - b.maxBlendPercent) * dir;
-      return (Number(a.isActive) - Number(b.isActive)) * dir;
-    });
-
-    return sorted;
-  }, [rules, debouncedSearch, feedTypeFilter, statusFilter, sortDirection, sortKey]);
-
-  const totalItems = filteredRules.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedRules = useMemo(
+    () => rulesResponse?.rules ?? [],
+    [rulesResponse?.rules],
+  );
+  const totalItems =
+    rulesResponse?.meta?.total ??
+    rulesResponse?.filteredTotal ??
+    paginatedRules.length;
+  const totalPages = Math.max(1, rulesResponse?.meta?.pages ?? 1);
   const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedRules = filteredRules.slice(startIndex, startIndex + pageSize);
 
   const visibleSelectedCount = useMemo(
     () =>
@@ -195,6 +203,7 @@ export default function AlternativesPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+    setPage(1);
   };
 
   const handleSelectOne = (id: string) => {
@@ -218,14 +227,14 @@ export default function AlternativesPage() {
   };
 
   const stats = {
-    total: rules.length,
-    active: rules.filter((rule) => rule.isActive).length,
-    fish: rules.filter((rule) => rule.feedType === 'fish').length,
-    poultry: rules.filter((rule) => rule.feedType === 'poultry').length,
-    both: rules.filter((rule) => rule.feedType === 'both').length,
+    total: rulesResponse?.summary?.total || 0,
+    active: rulesResponse?.summary?.active || 0,
+    fish: rulesResponse?.summary?.fish || 0,
+    poultry: rulesResponse?.summary?.poultry || 0,
+    both: rulesResponse?.summary?.both || 0,
   };
 
-  if ((rulesLoading && rules.length === 0) || ingredientsLoading) {
+  if ((rulesLoading && !rulesResponse) || ingredientsLoading) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -340,6 +349,7 @@ export default function AlternativesPage() {
             ];
             setSortKey(key);
             setSortDirection(direction);
+            setPage(1);
           }}
           className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
         >
@@ -347,7 +357,7 @@ export default function AlternativesPage() {
           <option value="alternative:asc">Alternative (A-Z)</option>
           <option value="maxBlendPercent:desc">Max Blend (High-Low)</option>
         </select>
-        <div className="text-sm text-gray-500">{filteredRules.length} rules</div>
+        <div className="text-sm text-gray-500">{totalItems} rules</div>
       </div>
 
       <div

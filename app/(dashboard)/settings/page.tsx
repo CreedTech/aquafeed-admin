@@ -167,7 +167,6 @@ function ConfigCard({
     energy_fat_mult: 'Energy Multiplier (Fat)',
     energy_global_mult: 'Final Energy Multiplier',
     formulation_fee: 'Standard Formulation Fee',
-    formulation_unlock_fee: 'Premium Unlock Fee (₦)',
     demo_weight_limit: 'Free Trial Weight Limit (kg)',
     currency_exchange_usd: 'Exchange Rate (USD to NGN)',
     currency_exchange_ghs: 'Exchange Rate (GHS to NGN)',
