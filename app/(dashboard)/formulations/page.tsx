@@ -174,7 +174,7 @@ export default function FormulationsPage() {
       {/* Main Content */}
       <div
         className={`flex-1 space-y-6 transition-all ${
-          viewingFormulation ? 'lg:mr-[520px]' : ''
+          viewingFormulation ? 'lg:mr-130' : ''
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -281,7 +281,7 @@ export default function FormulationsPage() {
           }`}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[1000px] lg:min-w-0">
+            <table className="w-full text-sm text-left min-w-250 lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
                   <th className="px-6 py-4 w-12">
@@ -630,7 +630,7 @@ function FormulationDetailDrawer({
     : f.ingredientsUsed?.slice(0, 5);
 
   return (
-    <div className="fixed right-0 top-0 h-screen w-full sm:w-[520px] bg-white border-l border-gray-200 shadow-xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
+    <div className="fixed right-0 top-0 h-screen w-full sm:w-130 bg-white border-l border-gray-200 shadow-xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 flex items-center justify-between">
         <div>
@@ -735,7 +735,7 @@ function FormulationDetailDrawer({
               <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tight">
                 Farm
               </p>
-              <p className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
+              <p className="text-sm font-medium text-gray-900 truncate max-w-30">
                 {f.farmId.name}
               </p>
             </div>
@@ -776,7 +776,7 @@ function FormulationDetailDrawer({
             </div>
             <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[450px]">
+                <table className="w-full text-sm min-w-112.5">
                   <thead className="bg-gray-50 text-gray-600 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-2.5 text-left font-semibold">

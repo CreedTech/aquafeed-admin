@@ -279,7 +279,7 @@ export default function IngredientsPage() {
     <div className="flex relative">
       <div
         className={`flex-1 space-y-6 transition-all ${
-          viewingIngredient ? 'lg:mr-[420px]' : ''
+          viewingIngredient ? 'lg:mr-105' : ''
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -404,7 +404,7 @@ export default function IngredientsPage() {
           }`}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[800px] md:min-w-0">
+            <table className="w-full text-sm text-left min-w-200 md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
                   <th className="px-6 py-4 w-12">
@@ -759,7 +759,7 @@ function IngredientDetailDrawer({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
+    <div className="fixed inset-y-0 right-0 w-full sm:w-115 bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 flex items-center justify-between">
         <div className="min-w-0">

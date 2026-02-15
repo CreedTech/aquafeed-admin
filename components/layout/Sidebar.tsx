@@ -47,10 +47,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     <aside
       className={cn(
         'fixed inset-y-0 left-0 z-50 md:relative h-screen bg-[#1E1F21] text-gray-400 flex flex-col transition-all duration-300 border-r border-gray-800',
-        isCollapsed ? 'md:w-[60px]' : 'md:w-[240px]',
+        isCollapsed ? 'md:w-15' : 'md:w-60',
         isOpen
-          ? 'w-[240px] translate-x-0'
-          : 'w-[240px] -translate-x-full md:translate-x-0',
+          ? 'w-60 translate-x-0'
+          : 'w-60 -translate-x-full md:translate-x-0',
       )}
     >
       {/* Header */}

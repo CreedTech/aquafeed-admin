@@ -275,7 +275,7 @@ export default function StandardsPage() {
     <div className="flex relative">
       <div
         className={`flex-1 space-y-6 transition-all ${
-          viewingStandard ? 'lg:mr-[450px]' : ''
+          viewingStandard ? 'lg:mr-112.5' : ''
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -344,7 +344,7 @@ export default function StandardsPage() {
                 setFeedTypeFilter(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:w-[160px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+              className="flex-1 sm:w-40 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Feed Types</option>
               <option value="fish">Fish</option>
@@ -356,7 +356,7 @@ export default function StandardsPage() {
                 setStageFilter(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+              className="flex-1 sm:w-35 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Stages</option>
               {stageOptions.map((stage) => (
@@ -371,7 +371,7 @@ export default function StandardsPage() {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="flex-1 sm:w-[140px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+              className="flex-1 sm:w-35 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="">All Status</option>
               <option value="active">Active</option>
@@ -388,7 +388,7 @@ export default function StandardsPage() {
               setSortDirection(direction);
               setPage(1);
             }}
-              className="flex-1 sm:w-[180px] px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+              className="flex-1 sm:w-45 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
             >
               <option value="name:asc">Name (A-Z)</option>
               <option value="name:desc">Name (Z-A)</option>
@@ -405,7 +405,7 @@ export default function StandardsPage() {
           }`}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[800px] lg:min-w-0">
+            <table className="w-full text-sm text-left min-w-200 lg:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
                 <tr>
                   <th className="px-6 py-4 w-12">
@@ -758,7 +758,7 @@ function StandardDetailDrawer({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
+    <div className="fixed inset-y-0 right-0 w-full sm:w-120 bg-white border-l border-gray-200 shadow-2xl z-50 animate-in slide-in-from-right duration-300 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10 flex items-center justify-between">
         <div className="min-w-0">
