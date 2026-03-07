@@ -38,6 +38,8 @@ interface FeedStandard {
   poultryType?: 'Broiler' | 'Layer';
   fishSubtype?: string;
   stage: string;
+  stageCode?: string;
+  ageGuidance?: string;
   description?: string;
   targetNutrients: {
     protein: Nutrient;
@@ -202,18 +204,18 @@ export default function StandardsPage() {
   const currentPage = Math.min(page, totalPages);
 
   const stageOptions = useMemo(() => {
-    if (stageCategories.length > 0) {
-      return stageCategories.map((stage) => ({
-        value: stage.displayName || stage.name,
-        label: stage.displayName || stage.name,
-      }));
-    }
+    const categoryValues = stageCategories.map(
+      (stage) => stage.displayName || stage.name,
+    );
+    const discovered = (data?.standards || [])
+      .map((standard) => standard.stage)
+      .filter(Boolean);
 
-    const discovered = Array.from(
-      new Set((data?.standards || []).map((standard) => standard.stage).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b));
+    const merged = Array.from(new Set([...categoryValues, ...discovered])).sort(
+      (a, b) => a.localeCompare(b),
+    );
 
-    return discovered.map((stage) => ({ value: stage, label: stage }));
+    return merged.map((stage) => ({ value: stage, label: stage }));
   }, [data?.standards, stageCategories]);
 
   const visibleSelectedCount = useMemo(
@@ -516,10 +518,17 @@ export default function StandardsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
-                        <Activity size={12} />
-                        {standard.stage}
-                      </span>
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                          <Activity size={12} />
+                          {standard.stage}
+                        </span>
+                        {standard.ageGuidance ? (
+                          <p className="text-[11px] text-gray-500">
+                            {standard.ageGuidance}
+                          </p>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-6 py-4 font-mono text-gray-600">
                       {standard.targetNutrients?.protein?.min}% -{' '}
@@ -628,6 +637,9 @@ export default function StandardsPage() {
                   {standard.stage}
                 </span>
               </div>
+              {standard.ageGuidance ? (
+                <p className="mb-3 text-xs text-gray-500">{standard.ageGuidance}</p>
+              ) : null}
 
               <div className="grid grid-cols-2 gap-4 py-3 border-t border-b border-gray-50">
                 <div>
@@ -777,6 +789,9 @@ function StandardDetailDrawer({
               {standard.stage}
             </span>
           </div>
+          {standard.ageGuidance ? (
+            <p className="mt-2 text-xs text-gray-500">{standard.ageGuidance}</p>
+          ) : null}
         </div>
         <button
           onClick={onClose}
@@ -865,6 +880,16 @@ function StandardDetailDrawer({
             </span>
           </div>
           <div className="border-t border-gray-200/50 pt-3 flex flex-col gap-1">
+            {standard.stageCode ? (
+              <div className="mb-2 text-center">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  Stage Code
+                </p>
+                <p className="font-mono text-[10px] text-gray-500 uppercase">
+                  {standard.stageCode}
+                </p>
+              </div>
+            ) : null}
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">
               Standard Unique Identifier
             </span>

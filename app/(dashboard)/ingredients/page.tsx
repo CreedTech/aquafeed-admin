@@ -42,11 +42,14 @@ interface Ingredient {
   _id: string;
   name: string;
   category: string;
+  aliases?: string[];
   defaultPrice: number;
   bagWeight: number | null;
   specificGravity: number | null;
   isAutoCalculated: boolean;
   autoCalcRatio: number | null;
+  dataQuality?: 'verified' | 'flagged';
+  qualityNotes?: string[];
   isActive: boolean;
   nutrients: Nutrient;
   constraints: { max_inclusion?: number; min_inclusion?: number };
@@ -89,6 +92,7 @@ export default function IngredientsPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [qualityFilter, setQualityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -118,6 +122,7 @@ export default function IngredientsPage() {
       'admin-ingredients',
       debouncedSearch,
       categoryFilter,
+      qualityFilter,
       statusFilter,
       sortKey,
       sortDirection,
@@ -128,6 +133,7 @@ export default function IngredientsPage() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (categoryFilter) params.append('category', categoryFilter);
+      if (qualityFilter) params.append('dataQuality', qualityFilter);
       if (statusFilter) {
         params.append('active', statusFilter === 'active' ? 'true' : 'false');
       }
@@ -362,6 +368,18 @@ export default function IngredientsPage() {
             ))}
           </select>
           <select
+            value={qualityFilter}
+            onChange={(e) => {
+              setQualityFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm"
+          >
+            <option value="">All Quality</option>
+            <option value="verified">Verified</option>
+            <option value="flagged">Flagged</option>
+          </select>
+          <select
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
@@ -531,15 +549,28 @@ export default function IngredientsPage() {
                       {ingredient.nutrients?.protein?.toFixed(1)}%
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                          ingredient.isActive
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {ingredient.isActive ? 'Active' : 'Archived'}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            ingredient.isActive
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {ingredient.isActive ? 'Active' : 'Archived'}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            ingredient.dataQuality === 'flagged'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          {ingredient.dataQuality === 'flagged'
+                            ? 'Flagged'
+                            : 'Verified'}
+                        </span>
+                      </div>
                     </td>
                     <td
                       className="px-6 py-4 text-right"
@@ -611,6 +642,18 @@ export default function IngredientsPage() {
                   }`}
                 >
                   {ingredient.isActive ? 'Active' : 'Archived'}
+                </span>
+              </div>
+
+              <div className="mb-3">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    ingredient.dataQuality === 'flagged'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}
+                >
+                  {ingredient.dataQuality === 'flagged' ? 'Flagged' : 'Verified'}
                 </span>
               </div>
 
