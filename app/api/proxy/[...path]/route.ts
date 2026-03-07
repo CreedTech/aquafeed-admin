@@ -9,6 +9,38 @@ const getBackendUrl = () => {
     return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
 };
 
+const safeParseRequestJson = async (request: NextRequest) => {
+    const raw = await request.text();
+    if (!raw || raw.trim().length === 0) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+};
+
+const safeParseBackendResponse = async (response: globalThis.Response) => {
+    const contentType = response.headers.get('content-type') || '';
+    const raw = await response.text();
+
+    if (!raw || raw.trim().length === 0) {
+        return null;
+    }
+
+    if (contentType.includes('application/json')) {
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return { raw };
+        }
+    }
+
+    return { raw };
+};
+
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
@@ -38,7 +70,7 @@ export async function GET(
             headers,
         });
 
-        const data = await backendResponse.json();
+        const data = await safeParseBackendResponse(backendResponse);
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
         console.error('[Proxy GET Error]:', error);
@@ -57,7 +89,7 @@ export async function POST(
         const sessionId = cookieStore.get('backend_session')?.value;
 
         const apiPath = path.join('/');
-        const body = await request.json();
+        const body = await safeParseRequestJson(request);
 
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
@@ -72,10 +104,10 @@ export async function POST(
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body),
+            ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await backendResponse.json();
+        const data = await safeParseBackendResponse(backendResponse);
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
         console.error('[Proxy POST Error]:', error);
@@ -94,7 +126,7 @@ export async function PUT(
         const sessionId = cookieStore.get('backend_session')?.value;
 
         const apiPath = path.join('/');
-        const body = await request.json();
+        const body = await safeParseRequestJson(request);
 
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
@@ -109,10 +141,10 @@ export async function PUT(
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'PUT',
             headers,
-            body: JSON.stringify(body),
+            ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await backendResponse.json();
+        const data = await safeParseBackendResponse(backendResponse);
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
         console.error('[Proxy PUT Error]:', error);
@@ -147,7 +179,7 @@ export async function DELETE(
             headers,
         });
 
-        const data = await backendResponse.json();
+        const data = await safeParseBackendResponse(backendResponse);
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
         console.error('[Proxy DELETE Error]:', error);
@@ -166,7 +198,7 @@ export async function PATCH(
         const sessionId = cookieStore.get('backend_session')?.value;
 
         const apiPath = path.join('/');
-        const body = await request.json();
+        const body = await safeParseRequestJson(request);
 
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
@@ -181,10 +213,10 @@ export async function PATCH(
         const backendResponse = await fetch(`${API_URL}/${apiPath}`, {
             method: 'PATCH',
             headers,
-            body: JSON.stringify(body),
+            ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await backendResponse.json();
+        const data = await safeParseBackendResponse(backendResponse);
         return NextResponse.json(data, { status: backendResponse.status });
     } catch (error) {
         console.error('[Proxy PATCH Error]:', error);
