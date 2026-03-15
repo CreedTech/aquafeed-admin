@@ -105,7 +105,7 @@ export default function DataImportsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Data Imports</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Poultry workbook preview, apply, and rollback operations.
+            Fish + poultry workbook preview, apply, and rollback operations.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -40,6 +40,13 @@ interface FeedStandard {
   stage: string;
   stageCode?: string;
   ageGuidance?: string;
+  pelletSize?: string;
+  sourceMeta?: {
+    workbook?: string;
+    sheet?: string;
+    version?: string;
+    inheritedFields?: string[];
+  };
   description?: string;
   targetNutrients: {
     protein: Nutrient;
@@ -523,6 +530,25 @@ export default function StandardsPage() {
                           <Activity size={12} />
                           {standard.stage}
                         </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {standard.pelletSize ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                              {standard.pelletSize}
+                            </span>
+                          ) : null}
+                          {standard.sourceMeta?.sheet ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                              {standard.sourceMeta.sheet}
+                            </span>
+                          ) : null}
+                          {standard.sourceMeta?.inheritedFields?.includes(
+                            'energy',
+                          ) ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                              Energy inherited
+                            </span>
+                          ) : null}
+                        </div>
                         {standard.ageGuidance ? (
                           <p className="text-[11px] text-gray-500">
                             {standard.ageGuidance}
@@ -636,6 +662,16 @@ export default function StandardsPage() {
                   <Activity size={10} />
                   {standard.stage}
                 </span>
+                {standard.sourceMeta?.sheet ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-teal-50 text-teal-700 text-[10px] font-bold uppercase">
+                    {standard.sourceMeta.sheet}
+                  </span>
+                ) : null}
+                {standard.sourceMeta?.inheritedFields?.includes('energy') ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 text-amber-700 text-[10px] font-bold uppercase">
+                    Energy inherited
+                  </span>
+                ) : null}
               </div>
               {standard.ageGuidance ? (
                 <p className="mb-3 text-xs text-gray-500">{standard.ageGuidance}</p>
@@ -888,6 +924,25 @@ function StandardDetailDrawer({
                 <p className="font-mono text-[10px] text-gray-500 uppercase">
                   {standard.stageCode}
                 </p>
+              </div>
+            ) : null}
+            {standard.sourceMeta ? (
+              <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3 text-left">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  Source
+                </p>
+                <p className="text-xs text-gray-700">
+                  Sheet: {standard.sourceMeta.sheet || '-'}
+                </p>
+                <p className="text-xs text-gray-700">
+                  Version: {standard.sourceMeta.version || '-'}
+                </p>
+                {standard.sourceMeta.inheritedFields &&
+                standard.sourceMeta.inheritedFields.length > 0 ? (
+                  <p className="text-xs text-amber-700">
+                    Inherited: {standard.sourceMeta.inheritedFields.join(', ')}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">
