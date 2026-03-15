@@ -17,6 +17,7 @@ import {
   ArrowRightLeft,
   X,
   FileSpreadsheet,
+  Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -31,6 +32,7 @@ const sidebarItems = [
   { icon: FileSpreadsheet, label: 'Data Imports', href: '/imports' },
   { icon: LayoutDashboard, label: 'Templates', href: '/templates' },
   { icon: FlaskConical, label: 'Formulations', href: '/formulations' },
+  { icon: Brain, label: 'Intelligence', href: '/intelligence' },
   { icon: Fish, label: 'Farms', href: '/farms' },
   { icon: CreditCard, label: 'Transactions', href: '/transactions' },
   { icon: Settings, label: 'Settings', href: '/settings' },
