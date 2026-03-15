@@ -41,6 +41,27 @@ const safeParseBackendResponse = async (response: globalThis.Response) => {
     return { raw };
 };
 
+const forwardBackendResponse = async (backendResponse: globalThis.Response) => {
+    const contentType = backendResponse.headers.get('content-type') || '';
+    const contentDisposition = backendResponse.headers.get('content-disposition');
+
+    if (contentType.includes('application/json')) {
+        const data = await safeParseBackendResponse(backendResponse);
+        return NextResponse.json(data, { status: backendResponse.status });
+    }
+
+    const raw = await backendResponse.arrayBuffer();
+    const headers = new Headers();
+    if (contentType) headers.set('Content-Type', contentType);
+    if (contentDisposition) {
+        headers.set('Content-Disposition', contentDisposition);
+    }
+    return new NextResponse(raw, {
+        status: backendResponse.status,
+        headers,
+    });
+};
+
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
@@ -70,8 +91,7 @@ export async function GET(
             headers,
         });
 
-        const data = await safeParseBackendResponse(backendResponse);
-        return NextResponse.json(data, { status: backendResponse.status });
+        return forwardBackendResponse(backendResponse);
     } catch (error) {
         console.error('[Proxy GET Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -107,8 +127,7 @@ export async function POST(
             ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await safeParseBackendResponse(backendResponse);
-        return NextResponse.json(data, { status: backendResponse.status });
+        return forwardBackendResponse(backendResponse);
     } catch (error) {
         console.error('[Proxy POST Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -144,8 +163,7 @@ export async function PUT(
             ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await safeParseBackendResponse(backendResponse);
-        return NextResponse.json(data, { status: backendResponse.status });
+        return forwardBackendResponse(backendResponse);
     } catch (error) {
         console.error('[Proxy PUT Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -179,8 +197,7 @@ export async function DELETE(
             headers,
         });
 
-        const data = await safeParseBackendResponse(backendResponse);
-        return NextResponse.json(data, { status: backendResponse.status });
+        return forwardBackendResponse(backendResponse);
     } catch (error) {
         console.error('[Proxy DELETE Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -216,8 +233,7 @@ export async function PATCH(
             ...(body !== null ? { body: JSON.stringify(body) } : {}),
         });
 
-        const data = await safeParseBackendResponse(backendResponse);
-        return NextResponse.json(data, { status: backendResponse.status });
+        return forwardBackendResponse(backendResponse);
     } catch (error) {
         console.error('[Proxy PATCH Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
