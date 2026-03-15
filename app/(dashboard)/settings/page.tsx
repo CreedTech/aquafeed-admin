@@ -20,10 +20,22 @@ interface ConfigItem {
   category: 'FINANCIAL' | 'SCIENTIFIC' | 'SOLVER' | 'SYSTEM';
 }
 
+interface OpenRouterModelSummary {
+  id: string;
+  name: string;
+  description?: string;
+  contextLength?: number;
+  pricing: {
+    prompt?: number;
+    completion?: number;
+  };
+  isFree: boolean;
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<
-    'SCIENTIFIC' | 'FINANCIAL' | 'SOLVER'
+    'SCIENTIFIC' | 'FINANCIAL' | 'SOLVER' | 'SYSTEM'
   >('SCIENTIFIC');
 
   const { data: configs, isLoading } = useQuery({
@@ -31,6 +43,14 @@ export default function SettingsPage() {
     queryFn: async () => {
       const { data } = await api.get('/admin/configurations');
       return data.configurations as ConfigItem[];
+    },
+  });
+
+  const { data: openRouterModels } = useQuery({
+    queryKey: ['admin-openrouter-models'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/ai/openrouter-models');
+      return (data.models || []) as OpenRouterModelSummary[];
     },
   });
 
@@ -46,6 +66,7 @@ export default function SettingsPage() {
     SCIENTIFIC: configs?.filter((c) => c.category === 'SCIENTIFIC') || [],
     FINANCIAL: configs?.filter((c) => c.category === 'FINANCIAL') || [],
     SOLVER: configs?.filter((c) => c.category === 'SOLVER') || [],
+    SYSTEM: configs?.filter((c) => c.category === 'SYSTEM') || [],
   };
 
   if (isLoading) {
@@ -114,6 +135,17 @@ export default function SettingsPage() {
           <Zap size={16} />
           Solver
         </button>
+        <button
+          onClick={() => setActiveTab('SYSTEM')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'SYSTEM'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <ShieldCheck size={16} />
+          AI & System
+        </button>
       </div>
 
       {/* Config Cards */}
@@ -125,6 +157,7 @@ export default function SettingsPage() {
             onUpdate={(val) =>
               updateMutation.mutate({ key: config.key, value: val })
             }
+            modelCatalog={openRouterModels || []}
             isUpdating={
               updateMutation.isPending &&
               updateMutation.variables?.key === config.key
@@ -151,15 +184,28 @@ export default function SettingsPage() {
 function ConfigCard({
   config,
   onUpdate,
+  modelCatalog,
   isUpdating,
 }: {
   config: ConfigItem;
   onUpdate: (val: number | string | boolean) => void;
+  modelCatalog: OpenRouterModelSummary[];
   isUpdating: boolean;
 }) {
   const [localValue, setLocalValue] = useState(config.value);
   const isBoolean = typeof config.value === 'boolean';
   const isNumber = typeof config.value === 'number';
+  const isModelConfigKey = [
+    'ai_openrouter_primary_model',
+    'ai_openrouter_fallback_model',
+    'ai_default_free_model',
+    'ai_paid_fallback_model',
+  ].includes(config.key);
+  const modelOptions =
+    config.key === 'ai_default_free_model'
+      ? modelCatalog.filter((model) => model.isFree)
+      : modelCatalog;
+  const selectedModel = modelOptions.find((m) => m.id === String(localValue));
 
   const keyLabels: Record<string, string> = {
     energy_protein_mult: 'Energy Multiplier (Protein)',
@@ -177,6 +223,21 @@ function ConfigCard({
     suggestion_allow_relaxations: 'Allow One-Tap Relaxations',
     suggestion_max_relaxation_step_pct: 'Max Relaxation Step (%)',
     suggestion_rank_strategy: 'Suggestion Ranking Strategy',
+    ai_enabled: 'Enable AI Analyst',
+    ai_openrouter_base_url: 'OpenRouter Base URL',
+    ai_openrouter_primary_model: 'AI Primary Model',
+    ai_openrouter_fallback_model: 'AI Fallback Model',
+    ai_free_first_enabled: 'AI Free-First Routing',
+    ai_allow_paid_fallback: 'Allow Paid Fallback',
+    ai_default_free_model: 'Default Free Model',
+    ai_paid_fallback_model: 'Paid Fallback Model',
+    ai_openrouter_temperature: 'AI Temperature',
+    ai_openrouter_max_tokens: 'AI Max Output Tokens',
+    ai_openrouter_timeout_ms: 'AI Timeout (ms)',
+    ai_cost_input_per_1k: 'AI Input Cost (USD/1k)',
+    ai_cost_output_per_1k: 'AI Output Cost (USD/1k)',
+    ai_soft_budget_daily_usd: 'AI Daily Alert Threshold (No Billing)',
+    ai_soft_budget_monthly_usd: 'AI Monthly Alert Threshold (No Billing)',
   };
 
   return (
@@ -204,6 +265,23 @@ function ConfigCard({
               <option value="true">true</option>
               <option value="false">false</option>
             </select>
+          ) : isModelConfigKey ? (
+            <>
+              <input
+                list={`model-options-${config.key}`}
+                value={String(localValue)}
+                onChange={(e) => setLocalValue(e.target.value)}
+                placeholder="Search model id"
+                className="w-full px-4 py-2 bg-gray-50 rounded-lg border border-gray-100 text-sm font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              />
+              <datalist id={`model-options-${config.key}`}>
+                {modelOptions.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </datalist>
+            </>
           ) : (
             <input
               type={isNumber ? 'number' : 'text'}
@@ -228,6 +306,23 @@ function ConfigCard({
           )}
         </button>
       </div>
+      {isModelConfigKey && selectedModel ? (
+        <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          <div className="font-semibold text-gray-800">
+            {selectedModel.name}
+          </div>
+          <div className="mt-1">
+            {selectedModel.isFree ? 'Free model' : 'Paid model'}
+            {selectedModel.contextLength
+              ? ` • Context: ${selectedModel.contextLength.toLocaleString()}`
+              : ''}
+          </div>
+          <div className="mt-1">
+            Prompt: {selectedModel.pricing.prompt ?? 0} USD/token • Completion:{' '}
+            {selectedModel.pricing.completion ?? 0} USD/token
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
