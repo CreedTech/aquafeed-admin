@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
-// Robust backend URL resolution
-const getBackendUrl = () => {
-    const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
-    return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
-};
+import { getBackendApiUrl, toJsonProxyResponse } from '@/lib/backend-proxy';
 
 export async function GET() {
-    const API_URL = getBackendUrl();
+    const API_URL = getBackendApiUrl();
     try {
         const cookieStore = await cookies();
         const sessionId = cookieStore.get('backend_session')?.value;
@@ -27,11 +22,11 @@ export async function GET() {
             },
         });
 
-        const data = await backendResponse.json();
-        return NextResponse.json(data, { status: backendResponse.status });
+        return toJsonProxyResponse(backendResponse, {
+            fallbackError: 'Unable to fetch authenticated user from backend service',
+        });
     } catch (error) {
         console.error('[Proxy auth/me Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
-

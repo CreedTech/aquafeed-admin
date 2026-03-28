@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Robust backend URL resolution
-const getBackendUrl = () => {
-    const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
-    return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
-};
+import { getBackendApiUrl, toJsonProxyResponse } from '@/lib/backend-proxy';
 
 export async function POST(request: NextRequest) {
-    const API_URL = getBackendUrl();
+    const API_URL = getBackendApiUrl();
     try {
         const body = await request.json();
 
@@ -21,12 +16,12 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify(body),
         });
 
-        const data = await backendResponse.json();
-
         // Get session cookie from backend response
         const setCookieHeader = backendResponse.headers.get('set-cookie');
 
-        const response = NextResponse.json(data, { status: backendResponse.status });
+        const response = await toJsonProxyResponse(backendResponse, {
+            fallbackError: 'Unable to verify OTP with backend service',
+        });
 
         // Forward the session cookie to the client
         if (setCookieHeader) {

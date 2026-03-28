@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Robust backend URL resolution
-const getBackendUrl = () => {
-    const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
-    return url.replace(/\/api\/v1\/?$/, '') + '/api/v1';
-};
+import { getBackendApiUrl, toJsonProxyResponse } from '@/lib/backend-proxy';
 
 export async function POST(request: NextRequest) {
-    const API_URL = getBackendUrl();
+    const API_URL = getBackendApiUrl();
     try {
         const body = await request.json();
 
@@ -21,11 +16,11 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify(body),
         });
 
-        const data = await backendResponse.json();
-        return NextResponse.json(data, { status: backendResponse.status });
+        return toJsonProxyResponse(backendResponse, {
+            fallbackError: 'Unable to request OTP from backend service',
+        });
     } catch (error) {
         console.error('[Proxy send-otp Error]:', error);
         return NextResponse.json({ error: 'Proxy error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
-
